@@ -1,0 +1,146 @@
+{
+  "version": 8,
+  "name": "Weather Broadcast",
+  "metadata": {
+    "wpb:note": "Reference only. The live style lives in Mapbox Studio. The counties source below is a placeholder; Weather Plate Builder adds its own tpl-* county layers at runtime."
+  },
+  "projection": { "name": "albers", "center": [-96, 38], "parallels": [29.5, 45.5] },
+  "center": [-96, 38],
+  "zoom": 3.6,
+  "glyphs": "mapbox://fonts/mapbox/{fontstack}/{range}.pbf",
+  "sources": {
+    "composite": { "type": "vector", "url": "mapbox://mapbox.mapbox-streets-v8" },
+    "counties": { "type": "vector", "url": "mapbox://REPLACE_ME.counties" }
+  },
+  "layers": [
+    {
+      "id": "background",
+      "type": "background",
+      "paint": { "background-color": "#1A2230" }
+    },
+    {
+      "id": "county-lines",
+      "type": "line",
+      "source": "counties",
+      "source-layer": "REPLACE_ME",
+      "paint": { "line-color": "#FFFFFF", "line-opacity": 0.1, "line-width": 0.4 }
+    },
+    {
+      "id": "risk-fill",
+      "type": "fill",
+      "source": "counties",
+      "source-layer": "REPLACE_ME",
+      "filter": ["in", ["get", "GEOID"], ["literal", []]],
+      "paint": { "fill-color": "#F2453D", "fill-opacity": 0.92 }
+    },
+    {
+      "id": "risk-county-lines",
+      "type": "line",
+      "source": "counties",
+      "source-layer": "REPLACE_ME",
+      "filter": ["in", ["get", "GEOID"], ["literal", []]],
+      "paint": { "line-color": "#FFFFFF", "line-opacity": 0.35, "line-width": 0.5 }
+    },
+    {
+      "id": "water",
+      "type": "fill",
+      "source": "composite",
+      "source-layer": "water",
+      "paint": { "fill-color": "#080C12" }
+    },
+    {
+      "id": "admin-1-boundary",
+      "type": "line",
+      "source": "composite",
+      "source-layer": "admin",
+      "filter": ["all", ["==", ["get", "admin_level"], 1], ["==", ["get", "maritime"], "false"]],
+      "layout": { "line-join": "round", "line-cap": "round" },
+      "paint": {
+        "line-color": "#5A6A82",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 3, 0.7, 8, 1.4]
+      }
+    },
+    {
+      "id": "admin-0-boundary",
+      "type": "line",
+      "source": "composite",
+      "source-layer": "admin",
+      "filter": ["all", ["==", ["get", "admin_level"], 0], ["==", ["get", "maritime"], "false"]],
+      "layout": { "line-join": "round", "line-cap": "round" },
+      "paint": {
+        "line-color": "#6B7A90",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 3, 1, 8, 2]
+      }
+    },
+    {
+      "id": "admin-0-boundary-maritime",
+      "type": "line",
+      "source": "composite",
+      "source-layer": "admin",
+      "filter": ["all", ["==", ["get", "admin_level"], 0], ["==", ["get", "maritime"], "true"]],
+      "paint": {
+        "line-color": "#5A6A82",
+        "line-dasharray": [3, 2],
+        "line-width": ["interpolate", ["linear"], ["zoom"], 3, 0.7, 8, 1.4]
+      }
+    },
+    {
+      "id": "state-label",
+      "type": "symbol",
+      "source": "composite",
+      "source-layer": "place_label",
+      "filter": ["all", ["==", ["get", "class"], "state"], ["==", ["get", "iso_3166_1"], "US"]],
+      "layout": {
+        "text-field": ["upcase", ["coalesce", ["get", "name_en"], ["get", "name"]]],
+        "text-font": ["DIN Pro Bold", "Arial Unicode MS Bold"],
+        "text-size": ["interpolate", ["linear"], ["zoom"], 3, 11, 7, 16],
+        "text-letter-spacing": 0.2,
+        "text-max-width": 8
+      },
+      "paint": {
+        "text-color": "#6B7A90",
+        "text-halo-color": "#1A2230",
+        "text-halo-width": 2
+      }
+    },
+    {
+      "id": "city-dot",
+      "type": "circle",
+      "source": "composite",
+      "source-layer": "place_label",
+      "filter": ["all",
+        ["==", ["get", "class"], "settlement"],
+        ["==", ["get", "iso_3166_1"], "US"],
+        ["<=", ["get", "symbolrank"], 8]
+      ],
+      "paint": {
+        "circle-color": "#FFFFFF",
+        "circle-radius": ["interpolate", ["linear"], ["zoom"], 3, 2, 8, 3.5]
+      }
+    },
+    {
+      "id": "city-label",
+      "type": "symbol",
+      "source": "composite",
+      "source-layer": "place_label",
+      "filter": ["all",
+        ["==", ["get", "class"], "settlement"],
+        ["==", ["get", "iso_3166_1"], "US"],
+        ["<=", ["get", "symbolrank"], 8]
+      ],
+      "layout": {
+        "text-field": ["coalesce", ["get", "name_en"], ["get", "name"]],
+        "text-font": ["DIN Pro Medium", "Arial Unicode MS Regular"],
+        "text-size": ["interpolate", ["linear"], ["zoom"], 3, 12, 8, 18],
+        "text-anchor": "left",
+        "text-offset": [0.6, 0],
+        "text-max-width": 8
+      },
+      "paint": {
+        "text-color": "#E8EDF3",
+        "text-halo-color": "#1A2230",
+        "text-halo-width": 1.5
+      }
+    }
+  ]
+}

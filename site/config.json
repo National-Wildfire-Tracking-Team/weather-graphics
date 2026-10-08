@@ -1,0 +1,12 @@
+{
+  "token": "pk.REPLACE_ME",
+  "style": "mapbox://styles/REPLACE_ME/REPLACE_ME",
+  "tileset": "mapbox://REPLACE_ME.counties",
+  "sourceLayer": "REPLACE_ME",
+  "idProp": "GEOID",
+  "defaultView": "Lower 48",
+  "lockSettings": true,
+  "groups": [
+    { "name": "TORNADO RISK", "color": "#F2453D" }
+  ]
+}
