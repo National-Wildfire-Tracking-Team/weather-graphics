@@ -217,11 +217,14 @@
       map.addLayer({ id: 'tpl-hit', type: 'fill', source: 'tpl-counties', 'source-layer': sl,
         paint: { 'fill-color': '#000', 'fill-opacity': 0 } });
       syncLayers();
-      setStatus('Ready. Turn on Paint counties to mark risk areas.');
+      setStatus(map.getLayer('water')
+        ? 'Ready. Turn on Paint counties to mark risk areas.'
+        : 'Warning: style has no layer with ID "water", so risk fill will draw on top of everything.');
     } else {
       setStatus('Map loaded. Add the county tileset URL + source layer to enable painting.');
     }
     applyToggles();
+    setPaintMode(paintMode);
     const dv = SITE && SITE.defaultView;
     if (dv && typeof dv === 'object' && dv.center) map.jumpTo({ center: dv.center, zoom: dv.zoom || 5 });
     else fitView(typeof dv === 'string' && VIEWS[dv] ? dv : 'Southeast');
@@ -303,7 +306,9 @@
     const f = featureAt(e.point);
     if (f) {
       const p = f.properties, id = pad5(p[idProp()]);
-      $('hover').innerHTML = '<b>' + (p.NAME || p.name || '') + '</b> · ' + id;
+      const b = document.createElement('b');
+      b.textContent = p.NAME || p.name || '';
+      $('hover').replaceChildren(b, ' · ' + id);
       if (painting && paintMode) applyPaint(id);
     }
   }
@@ -315,7 +320,7 @@
     $('paintBtn').classList.toggle('on', on);
     $('map').classList.toggle('paint', on);
     if (!map) return;
-    ['dragPan', 'boxZoom', 'dragRotate'].forEach(h => on ? map[h].disable() : map[h].enable());
+    ['dragPan', 'boxZoom', 'dragRotate', 'doubleClickZoom'].forEach(h => on ? map[h].disable() : map[h].enable());
   }
 
   /* ---------- groups UI ---------- */
@@ -374,20 +379,25 @@
   }
   async function exportPNG(ratio, withRisk) {
     const prev = riskOn;
-    setRisk(withRisk);
-    await renderAt(ratio);
-    const c = map.getCanvas();
-    const w = c.width, h = c.height;
-    const blob = await new Promise(r => c.toBlob(r, 'image/png'));
-    await renderAt(ORIG_DPR);
-    setRisk(prev);
+    let w, h, blob;
+    try {
+      setRisk(withRisk);
+      await renderAt(ratio);
+      const c = map.getCanvas();
+      w = c.width; h = c.height;
+      blob = await new Promise(r => c.toBlob(r, 'image/png'));
+    } finally {
+      await renderAt(ORIG_DPR);
+      setRisk(prev);
+    }
+    if (!blob) { setStatus('Export failed: the browser returned no image.'); return; }
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 16);
     a.download = 'plate_' + stamp + '_' + (withRisk ? 'risk' : 'clean') + '_' + w + 'x' + h + '.png';
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-    if (w !== 1920 * ratio) setStatus('Note: exported ' + w + '×' + h + ' (browser limited the size).');
+    if (w !== 1920 * ratio || h !== 1080 * ratio) setStatus('Note: exported ' + w + '×' + h + ' (browser limited the size).');
     else setStatus('Exported ' + w + '×' + h + ' PNG.');
   }
 
@@ -419,6 +429,10 @@
       if (!r.ok) return;
       SITE = await r.json();
     } catch (e) { SITE = null; return; }
+    // Values still holding REPLACE_ME placeholders count as unset.
+    ['token', 'style', 'tileset', 'sourceLayer', 'idProp'].forEach(k => {
+      if (typeof SITE[k] === 'string' && /REPLACE_ME/.test(SITE[k])) delete SITE[k];
+    });
     if (SITE.token) $('token').value = SITE.token;
     if (typeof SITE.style === 'string') $('style').value = SITE.style;
     if (SITE.tileset) $('tileset').value = SITE.tileset;
@@ -429,6 +443,7 @@
       state.active = state.groups[0].id;
       state.nextId = Math.max.apply(null, state.groups.map(g => g.id)) + 1;
     }
+    if (!SITE.token || !SITE.style) return; // incomplete config: keep the settings form visible
     if (SITE.lockSettings !== false) { $('cfgWrap').style.display = 'none'; $('siteNote').style.display = 'block'; }
   }
 

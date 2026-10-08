@@ -46,20 +46,20 @@ style/
 ## The tool (site/index.html)
 Vanilla JS, Mapbox GL JS **v3.9.0** from api.mapbox.com, no build step.
 
-- **Fixed frame:** the map container is always 1920×1080 CSS px, scaled to fit the screen with a CSS transform, so preview framing equals export framing. A "header guide" overlay (DOM only, never exported) shows the 140px header bar area.
-- **Config:** on load it `fetch`es `config.json` (same origin). Fields: `token`, `style` (Studio URL string, or a full style object), `tileset`, `sourceLayer`, `idProp` (default `GEOID`), `defaultView` (preset name or `{center, zoom}`), `lockSettings` (hides the settings panel when true), `groups` (starting risk-group template). Without `config.json` (e.g. opened via `file://`) it falls back to the manual settings form plus localStorage. Values containing `REPLACE_ME` count as unset, and the settings panel is shown even if locked.
-- **Counties:** adds source `tpl-counties` from the tileset, an invisible `tpl-hit` fill layer for `queryRenderedFeatures`, and a `tpl-fill-<groupId>` / `tpl-line-<groupId>` pair per group, filtered with `["in", ["get", idProp], ["literal", ids]]`. FIPS codes are zero-padded to 5 chars.
-- **Painting:** Paint mode disables dragPan/boxZoom/dragRotate/doubleClickZoom. Mousedown decides add vs. remove (remove if the county is already in the active group or Alt is held), and dragging continues that action. A county belongs to only one group. `P` toggles paint mode.
+- **Fixed frame:** the map container is always 1920×1080 CSS px, scaled to fit the screen with a CSS transform, so preview framing equals export framing. An optional title-bar safe-area overlay (DOM only, never exported) marks the top 140px.
+- **Config:** on load it `fetch`es `config.json` (same origin). Fields: `token`, `style` (Studio URL string, or a full style object), `tileset`, `sourceLayer`, `idProp` (default `GEOID`), `defaultView` (preset name or `{center, zoom}`; default Southeast), `lockSettings` (hides the settings panel unless explicitly `false`), `groups` (starting risk-group template, used only when localStorage has no saved groups). Without `config.json` (e.g. opened via `file://`) it falls back to the manual settings form plus localStorage. String values containing `REPLACE_ME` count as unset, and the settings panel stays visible while `token` or `style` is unset.
+- **Counties:** adds source `tpl-counties` from the tileset, an invisible `tpl-hit` fill layer for `queryRenderedFeatures`, and a `tpl-fill-<groupId>` / `tpl-line-<groupId>` pair per group, filtered with `["in", ["get", idProp], ["literal", ids]]`. FIPS codes are zero-padded to 5 chars. Each group also has a FIPS textarea for typing/pasting codes.
+- **Painting:** Paint mode disables dragPan/boxZoom/dragRotate/doubleClickZoom. Mousedown decides add vs. remove (remove if the county is already in the active group or Alt is held), and dragging continues that action. A county belongs to only one group.
 - **View presets:** Southeast, Gulf Coast, Midwest, Plains, Northeast, West, Lower 48, fit with top padding of 140px for the header bar.
-- **Export:** `preserveDrawingBuffer: true`. The canvas pixel ratio is forced to the target scale for *both* sizes (on a HiDPI screen the default ratio would make the "1080p" export 4K). It uses `map.setPixelRatio` if it exists, else overrides `window.devicePixelRatio` and calls `map.resize()`. It waits for `idle`, takes `canvas.toBlob`, then restores. The status line reports the actual PNG size and warns on mismatch. "Risk + clean" exports two PNGs.
-- **Persistence:** localStorage key `wpb.v1` (settings + groups + view). Presets save/load as JSON `{view, groups, active, nextId}`.
+- **Export:** `preserveDrawingBuffer: true`. The pixel ratio is set to the target scale for *both* sizes (so a HiDPI screen doesn't turn a 1080p export into 4K). It uses `map.setPixelRatio` if it exists, else overrides `window.devicePixelRatio` and calls `map.resize()`. It waits for `idle` (10s timeout), takes `canvas.toBlob`, then restores the original ratio and risk visibility, even if the export fails. The status line warns if the PNG size isn't the expected one. "Risk + clean" exports two PNGs.
+- **Persistence:** localStorage key `wpb.v1` (settings + groups). Presets save/load as JSON `{view, groups, active, nextId}`.
 
 ## Deployment
-- Netlify project: **`weather-plate-builder`** (site ID `efca7ba6-a57f-477a-a7fc-197ebccf3585`), URL `https://weather-plate-builder.netlify.app`. Created empty; first deploy still pending.
+- Netlify project: **`weather-plate-builder`** (site ID `efca7ba6-a57f-477a-a7fc-197ebccf3585`), URL `https://weather-plate-builder.netlify.app`. First deployed 2026-10-08 by drag-and-drop with only `index.html` (no `config.json`), so the live site uses the manual settings form.
 - Deploy: `netlify deploy --prod --dir site --site efca7ba6-a57f-477a-a7fc-197ebccf3585`, or drag the `site/` folder onto the project's Deploys page.
 - The owner has other unrelated Netlify sites on the same team. **Never deploy to any site other than this one.**
 - The Mapbox public token in `config.json` is intentionally public. It must be URL-restricted to the Netlify domain in Mapbox account settings.
-- `site/config.json` currently holds `REPLACE_ME` placeholders for token, style and tileset. Fill them in before the first deploy.
+- `site/config.json` currently holds `REPLACE_ME` placeholders for token, style, tileset and source layer. Deploying it as-is is safe (the tool ignores placeholders and keeps the settings form), but fill them in to get a locked, zero-setup site.
 
 ## Unverified: test these first
 This has never been run against live Mapbox:
