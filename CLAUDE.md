@@ -51,7 +51,7 @@ Vanilla JS, Mapbox GL JS **v3.9.0** from api.mapbox.com, no build step.
 - **Counties:** adds source `tpl-counties` from the tileset, an invisible `tpl-hit` fill layer for `queryRenderedFeatures`, and a `tpl-fill-<groupId>` / `tpl-line-<groupId>` pair per group, filtered with `["in", ["get", idProp], ["literal", ids]]`. FIPS codes are zero-padded to 5 chars. Each group also has a FIPS textarea for typing/pasting codes.
 - **Painting:** Paint mode disables dragPan/boxZoom/dragRotate/doubleClickZoom. Mousedown decides add vs. remove (remove if the county is already in the active group or Alt is held), and dragging continues that action. A county belongs to only one group.
 - **View presets:** Southeast, Gulf Coast, Midwest, Plains, Northeast, West, Lower 48, fit with top padding of 140px for the header bar.
-- **Export:** `preserveDrawingBuffer: true`. The pixel ratio is set to the target scale for *both* sizes (so a HiDPI screen doesn't turn a 1080p export into 4K). It uses `map.setPixelRatio` if it exists, else overrides `window.devicePixelRatio` and calls `map.resize()`. It waits for `idle` (10s timeout), takes `canvas.toBlob`, then restores the original ratio and risk visibility, even if the export fails. The status line warns if the PNG size isn't the expected one. "Risk + clean" exports two PNGs.
+- **Export:** `preserveDrawingBuffer: true`. The pixel ratio is set to the target scale for *both* sizes (so a HiDPI screen doesn't turn a 1080p export into 4K). It uses `map.setPixelRatio` if it exists. GL JS v3.9 doesn't have it (verified), so the tool overrides `window.devicePixelRatio` and nudges the map container by 1px before calling `map.resize()`: v3.9's `resize()` does nothing unless the container size changed. Afterwards it restores the browser's original `devicePixelRatio` property descriptor. It waits for `idle` (10s timeout), takes `canvas.toBlob`, then restores the original ratio and risk visibility, even if the export fails. The status line warns if the PNG size isn't the expected one. "Risk + clean" exports two PNGs.
 - **Persistence:** localStorage key `wpb.v1` (settings + groups). Presets save/load as JSON `{view, groups, active, nextId}`.
 
 ## Deployment
@@ -59,15 +59,24 @@ Vanilla JS, Mapbox GL JS **v3.9.0** from api.mapbox.com, no build step.
 - Deploy: `netlify deploy --prod --dir site --site efca7ba6-a57f-477a-a7fc-197ebccf3585`, or drag the `site/` folder onto the project's Deploys page.
 - The owner has other unrelated Netlify sites on the same team. **Never deploy to any site other than this one.**
 - The Mapbox public token in `config.json` is intentionally public. It must be URL-restricted to the Netlify domain in Mapbox account settings.
-- `site/config.json` currently holds `REPLACE_ME` placeholders for token, style, tileset and source layer. Deploying it as-is is safe (the tool ignores placeholders and keeps the settings form), but fill them in to get a locked, zero-setup site.
+- `site/config.json` has the real token and style. `tileset` and `sourceLayer` are still `REPLACE_ME` placeholders. The tool ignores placeholders and keeps the settings form visible until token, style, tileset and source layer are all set, so deploying it now is safe.
 
-## Unverified: test these first
-This has never been run against live Mapbox:
-1. The tool loads with the real Studio style URL and tileset, and the status line shows no errors.
-2. Painting works: `queryRenderedFeatures` on the opacity-0 `tpl-hit` layer returns features, and clicks land correctly under the CSS-scaled frame.
-3. The 4K export is actually 3840×2160 (check the DPR-override fallback; GL JS v3.9 may not have `setPixelRatio`). If it isn't, consider an offscreen map at 2x.
-4. The `state-label` filter `iso_3166_1 == "US"` matches Streets v8 data. If state labels vanish, drop that clause.
-5. Export with risk off → on → off restores visibility correctly.
+## Live Studio style
+- Style: `mapbox://styles/kbeshore6/cmv003g61004c01s157h57gev` ("Weather Broadcast Dark"), account `kbeshore6`.
+- As of 2026-10-08 its layers are `background`, `water`, `admin-1-boundary`, `admin-0-boundary`, `admin-0-boundary-maritime`, `state-label`, `city-dot`, `city-label`. Projection is Albers, as specified.
+- It has **no county layers or counties source**, so the base-counties toggle currently does nothing. Base county lines would need the county tileset added in Studio as a `county-lines` layer below `water`.
+- Its `city-dot` / `city-label` filters have no `iso_3166_1 == "US"` clause, so Canadian, Mexican and Caribbean cities (Toronto, Havana, Nassau…) appear. The reference JSON has the clause; add it in Studio to match.
+
+## Verification status
+Checked 2026-10-08 in headless Chromium against the live style (no county tileset yet):
+- ✅ The tool loads the real Studio style with no errors.
+- ✅ Export sizes: 1920×1080 and 3840×2160 come out correct on both 1x and 2x screens, and the preview canvas is restored afterwards. Before the fix, export size followed the screen's DPR instead.
+- ✅ Streets v8 `place_label` state features carry `iso_3166_1 = "US"`, so the `state-label` filter works.
+
+Still unverified (needs the county tileset):
+1. Painting works: `queryRenderedFeatures` on the opacity-0 `tpl-hit` layer returns features, and clicks land correctly under the CSS-scaled frame.
+2. Export with risk off → on → off restores visibility correctly.
+3. The tileset's `GEOID` is a string; the filter compares against zero-padded strings, so a numeric property won't match.
 
 ## Ideas / roadmap
 - One-click "select all counties in state X" (FIPS prefix = state code).

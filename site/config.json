@@ -1,12 +1,15 @@
 {
-  "token": "pk.REPLACE_ME",
-  "style": "mapbox://styles/REPLACE_ME/REPLACE_ME",
-  "tileset": "mapbox://REPLACE_ME.counties",
+  "token": "pk.eyJ1Ijoia2Jlc2hvcmU2IiwiYSI6ImNtaG1kN3NvMjA5eTEyaW9nNG9uMjdqcWUifQ.JywdBqHqT3tcQ8IbyljLjg",
+  "style": "mapbox://styles/kbeshore6/cmv003g61004c01s157h57gev",
+  "tileset": "mapbox://kbeshore6.REPLACE_ME",
   "sourceLayer": "REPLACE_ME",
   "idProp": "GEOID",
-  "defaultView": "Lower 48",
+  "defaultView": "Southeast",
   "lockSettings": true,
   "groups": [
-    { "name": "TORNADO RISK", "color": "#F2453D" }
+    {
+      "name": "TORNADO RISK",
+      "color": "#F2453D"
+    }
   ]
 }

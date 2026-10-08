@@ -135,6 +135,7 @@
   const $ = id => document.getElementById(id);
   const LS = 'wpb.v1';
   const ORIG_DPR = window.devicePixelRatio || 1;
+  const DPR_DESC = Object.getOwnPropertyDescriptor(window, 'devicePixelRatio');
 
   const VIEWS = {
     'Southeast':    [[-92.5, 24.5], [-76.5, 36.8]],
@@ -368,12 +369,19 @@
       map.once('idle', fin); map.triggerRepaint(); setTimeout(fin, 10000);
     });
   }
+  // ratio = null restores the screen's own pixel ratio.
   async function renderAt(ratio) {
     if (typeof map.setPixelRatio === 'function') {
-      map.setPixelRatio(ratio);
+      map.setPixelRatio(ratio || ORIG_DPR);
     } else {
-      Object.defineProperty(window, 'devicePixelRatio', { value: ratio, configurable: true, writable: true });
-      map.resize();
+      // GL JS v3.9 has no setPixelRatio; it reads window.devicePixelRatio when sizing the canvas,
+      // but resize() is a no-op unless the container size changed, so nudge the container 1px.
+      if (ratio) Object.defineProperty(window, 'devicePixelRatio', { value: ratio, configurable: true, writable: true });
+      else if (DPR_DESC) Object.defineProperty(window, 'devicePixelRatio', DPR_DESC);
+      else delete window.devicePixelRatio;
+      const el = $('map');
+      el.style.right = '1px'; map.resize();
+      el.style.right = ''; map.resize();
     }
     await settle();
   }
@@ -387,7 +395,7 @@
       w = c.width; h = c.height;
       blob = await new Promise(r => c.toBlob(r, 'image/png'));
     } finally {
-      await renderAt(ORIG_DPR);
+      await renderAt(null);
       setRisk(prev);
     }
     if (!blob) { setStatus('Export failed: the browser returned no image.'); return; }
@@ -443,7 +451,8 @@
       state.active = state.groups[0].id;
       state.nextId = Math.max.apply(null, state.groups.map(g => g.id)) + 1;
     }
-    if (!SITE.token || !SITE.style) return; // incomplete config: keep the settings form visible
+    // Incomplete config: keep the settings form visible so the missing values can be entered.
+    if (!SITE.token || !SITE.style || !SITE.tileset || !SITE.sourceLayer) return;
     if (SITE.lockSettings !== false) { $('cfgWrap').style.display = 'none'; $('siteNote').style.display = 'block'; }
   }
 
