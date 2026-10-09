@@ -64,7 +64,9 @@ Vanilla JS, Mapbox GL JS **v3.9.0** from api.mapbox.com, no build step.
 ## Live Studio style
 - Style: `mapbox://styles/kbeshore6/cmv003g61004c01s157h57gev` ("Weather Broadcast Dark"), account `kbeshore6`.
 - As of 2026-10-08 its layers are `background`, `water`, `admin-1-boundary`, `admin-0-boundary`, `admin-0-boundary-maritime`, `state-label`, `city-dot`, `city-label`. Projection is Albers, as specified.
-- It has **no county layers or counties source**, so the base-counties toggle currently does nothing. Base county lines would need the county tileset added in Studio as a `county-lines` layer below `water`.
+- It has **no county layers or counties source**, so the base-counties toggle currently does nothing.
+- Streets v8 already has US county boundaries: `admin` features with `admin_level == 2` (verified in tiles z5–z9). They're merged lines with no `GEOID` or name, so they're fine for a base `county-lines` layer (put it below `water`, filter `admin_level == 2` and `iso_3166_1 == "US"`) but useless for painting.
+- Painting needs a county **polygon** tileset with a string `GEOID`. Recommended: upload the Census `cb_2023_us_county_500k.zip` as a Studio tileset, then set `tileset` and `sourceLayer` in `config.json`.
 - Its `city-dot` / `city-label` filters have no `iso_3166_1 == "US"` clause, so Canadian, Mexican and Caribbean cities (Toronto, Havana, Nassau…) appear. The reference JSON has the clause; add it in Studio to match.
 
 ## Verification status
