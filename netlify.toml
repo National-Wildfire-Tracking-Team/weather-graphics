@@ -1,0 +1,8 @@
+# Static site: no build step. The Weather Plate Builder is at / and the Newsroom Graphics Studio at /studio/.
+[build]
+  publish = "site"
+
+[[headers]]
+  for = "/config.json"
+  [headers.values]
+    Cache-Control = "no-cache"
