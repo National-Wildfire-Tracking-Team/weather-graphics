@@ -10,5 +10,5 @@
 | templates.test.mjs | 25 passed |
 | app.test.mjs | 14 passed |
 
-Suites were run individually during development; a final combined `run-all.sh` run was in progress when this was committed.
+Final combined `run-all.sh` run: all seven suites passed, exit code 0.
 Not covered: visual regression, other browsers, real GPU rendering, multi-user behaviour (none exists).
