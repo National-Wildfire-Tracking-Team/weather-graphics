@@ -16,6 +16,7 @@ site/
   config.json       # shared site config: token, style, tileset (see below)
 style/
   weather-broadcast-style.json   # reference Mapbox style JSON (v8)
+  weather-broadcast-dark.studio.json  # live Studio style + fixes (US-only cities, county-lines), ready to upload
 ```
 `.netlify` is in `.gitignore` for when the site gets linked with the Netlify CLI.
 
