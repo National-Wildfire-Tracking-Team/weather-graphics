@@ -6,6 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.css" rel="stylesheet">
 <script src="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
 <style>
   :root { --bg:#0c1119; --panel:#121927; --line:#263247; --text:#e8edf3; --dim:#7d8ca3; --red:#f2453d; }
   * { box-sizing:border-box; }
@@ -61,7 +62,7 @@
       <input type="password" id="token" placeholder="pk.eyJ1…">
       <label>Style URL</label>
       <input type="text" id="style" placeholder="mapbox://styles/USERNAME/STYLE_ID">
-      <label>County tileset URL</label>
+      <label>County tileset URL (optional; blank = public county boundaries)</label>
       <input type="text" id="tileset" placeholder="mapbox://USERNAME.TILESET_ID">
       <div class="row">
         <div><label>Source layer</label><input type="text" id="srcLayer" placeholder="from tileset page"></div>
@@ -135,6 +136,10 @@
   const $ = id => document.getElementById(id);
   const LS = 'wpb.v1';
   const ORIG_DPR = window.devicePixelRatio || 1;
+  // Public US county boundaries (Census, simplified), used when no Mapbox county tileset is set.
+  const PUBLIC_COUNTIES = 'https://cdn.jsdelivr.net/npm/us-atlas@3.0.1/counties-10m.json';
+  let countyLayer = null;      // source-layer for a vector tileset; null for GeoJSON
+  let countyCache = null;      // { url, data } so reconnecting doesn't refetch
   const DPR_DESC = Object.getOwnPropertyDescriptor(window, 'devicePixelRatio');
 
   const VIEWS = {
@@ -211,23 +216,56 @@
     setStatus('Loading…');
   }
 
-  function onLoad() {
-    const t = $('tileset').value.trim(), sl = srcLayer();
-    if (t && sl) {
-      map.addSource('tpl-counties', { type: 'vector', url: t });
-      map.addLayer({ id: 'tpl-hit', type: 'fill', source: 'tpl-counties', 'source-layer': sl,
-        paint: { 'fill-color': '#000', 'fill-opacity': 0 } });
+  // Source fields for tpl-* layers: vector tilesets need a source-layer, GeoJSON must not have one.
+  const countySrc = () => countyLayer ? { source: 'tpl-counties', 'source-layer': countyLayer } : { source: 'tpl-counties' };
+
+  // Fetch a GeoJSON or TopoJSON county file and make sure every feature has a 5-digit ID in idProp and a NAME.
+  async function loadCountyGeoJSON(url) {
+    if (countyCache && countyCache.url === url) return countyCache.data;
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('HTTP ' + r.status + ' for ' + url);
+    let data = await r.json();
+    if (data.type === 'Topology') {
+      const key = data.objects.counties ? 'counties' : Object.keys(data.objects)[0];
+      data = topojson.feature(data, data.objects[key]);
+    }
+    const prop = idProp();
+    data.features.forEach(f => {
+      const p = f.properties = f.properties || {};
+      const id = p[prop] != null ? p[prop] : f.id;
+      if (id != null) p[prop] = pad5(id);
+      if (p.NAME == null && p.name != null) p.NAME = p.name;
+    });
+    countyCache = { url, data };
+    return data;
+  }
+
+  async function onLoad() {
+    const m = map, t = $('tileset').value.trim(), sl = srcLayer();
+    try {
+      if (t && sl) {
+        countyLayer = sl;
+        m.addSource('tpl-counties', { type: 'vector', url: t });
+      } else {
+        setStatus('Loading public county boundaries…');
+        const url = (SITE && SITE.counties) || PUBLIC_COUNTIES;
+        const data = await loadCountyGeoJSON(url);
+        if (m !== map) return; // map was reloaded while fetching
+        countyLayer = null;
+        m.addSource('tpl-counties', { type: 'geojson', data: data });
+      }
+      m.addLayer(Object.assign({ id: 'tpl-hit', type: 'fill', paint: { 'fill-color': '#000', 'fill-opacity': 0 } }, countySrc()));
       syncLayers();
-      setStatus(map.getLayer('water')
-        ? 'Ready. Turn on Paint counties to mark risk areas.'
+      setStatus(m.getLayer('water')
+        ? 'Ready' + (countyLayer ? '' : ' (public county boundaries)') + '. Turn on Paint counties to mark risk areas.'
         : 'Warning: style has no layer with ID "water", so risk fill will draw on top of everything.');
-    } else {
-      setStatus('Map loaded. Add the county tileset URL + source layer to enable painting.');
+    } catch (e) {
+      setStatus('Could not load counties: ' + e.message);
     }
     applyToggles();
     setPaintMode(paintMode);
     const dv = SITE && SITE.defaultView;
-    if (dv && typeof dv === 'object' && dv.center) map.jumpTo({ center: dv.center, zoom: dv.zoom || 5 });
+    if (dv && typeof dv === 'object' && dv.center) m.jumpTo({ center: dv.center, zoom: dv.zoom || 5 });
     else fitView(typeof dv === 'string' && VIEWS[dv] ? dv : 'Southeast');
   }
 
@@ -239,7 +277,7 @@
   /* ---------- risk layers ---------- */
   function syncLayers() {
     if (!map || !map.getSource('tpl-counties')) return;
-    const sl = srcLayer(), prop = idProp();
+    const prop = idProp();
     const before = map.getLayer('water') ? 'water' : undefined;
     const vis = riskOn ? 'visible' : 'none';
     const wanted = new Set();
@@ -248,12 +286,12 @@
       const fid = 'tpl-fill-' + g.id, lid = 'tpl-line-' + g.id;
       wanted.add(fid); wanted.add(lid);
       if (!map.getLayer(fid)) {
-        map.addLayer({ id: fid, type: 'fill', source: 'tpl-counties', 'source-layer': sl, filter: f,
+        map.addLayer(Object.assign({ id: fid, type: 'fill', filter: f,
           layout: { visibility: vis },
-          paint: { 'fill-color': g.color, 'fill-opacity': +$('fillOp').value } }, before);
-        map.addLayer({ id: lid, type: 'line', source: 'tpl-counties', 'source-layer': sl, filter: f,
+          paint: { 'fill-color': g.color, 'fill-opacity': +$('fillOp').value } }, countySrc()), before);
+        map.addLayer(Object.assign({ id: lid, type: 'line', filter: f,
           layout: { visibility: vis, 'line-join': 'round' },
-          paint: { 'line-color': '#FFFFFF', 'line-opacity': +$('lineOp').value, 'line-width': 0.5 } }, before);
+          paint: { 'line-color': '#FFFFFF', 'line-opacity': +$('lineOp').value, 'line-width': 0.5 } }, countySrc()), before);
       } else {
         map.setFilter(fid, f); map.setFilter(lid, f);
         map.setPaintProperty(fid, 'fill-color', g.color);
@@ -438,7 +476,7 @@
       SITE = await r.json();
     } catch (e) { SITE = null; return; }
     // Values still holding REPLACE_ME placeholders count as unset.
-    ['token', 'style', 'tileset', 'sourceLayer', 'idProp'].forEach(k => {
+    ['token', 'style', 'tileset', 'sourceLayer', 'idProp', 'counties'].forEach(k => {
       if (typeof SITE[k] === 'string' && /REPLACE_ME/.test(SITE[k])) delete SITE[k];
     });
     if (SITE.token) $('token').value = SITE.token;
@@ -452,7 +490,7 @@
       state.nextId = Math.max.apply(null, state.groups.map(g => g.id)) + 1;
     }
     // Incomplete config: keep the settings form visible so the missing values can be entered.
-    if (!SITE.token || !SITE.style || !SITE.tileset || !SITE.sourceLayer) return;
+    if (!SITE.token || !SITE.style) return;
     if (SITE.lockSettings !== false) { $('cfgWrap').style.display = 'none'; $('siteNote').style.display = 'block'; }
   }
 
