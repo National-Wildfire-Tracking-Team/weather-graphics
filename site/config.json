@@ -1,6 +1,17 @@
 {
   "token": "pk.eyJ1Ijoia2Jlc2hvcmU2IiwiYSI6ImNtaG1kN3NvMjA5eTEyaW9nNG9uMjdqcWUifQ.JywdBqHqT3tcQ8IbyljLjg",
   "style": "mapbox://styles/kbeshore6/cmv003g61004c01s157h57gev",
+  "projection": {
+    "name": "albers",
+    "center": [
+      -96,
+      38
+    ],
+    "parallels": [
+      29.5,
+      45.5
+    ]
+  },
   "counties": "https://cdn.jsdelivr.net/npm/us-atlas@3.0.1/counties-10m.json",
   "idProp": "GEOID",
   "defaultView": "Southeast",

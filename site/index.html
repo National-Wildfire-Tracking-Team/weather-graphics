@@ -204,10 +204,13 @@
     if (!token || !style) { setStatus('Enter a token and style URL first.'); return; }
     if (map) { map.remove(); map = null; }
     mapboxgl.accessToken = token;
-    map = new mapboxgl.Map({
+    const opts = {
       container: 'map', style: style, center: [-85.5, 31.5], zoom: 5.4,
       preserveDrawingBuffer: true, attributionControl: false, fadeDuration: 0, antialias: true
-    });
+    };
+    // config.json can pin the projection so a Studio edit that drops it doesn't silently switch to Mercator.
+    if (SITE && SITE.projection) opts.projection = SITE.projection;
+    map = new mapboxgl.Map(opts);
     map.on('error', e => setStatus('Map error: ' + ((e.error && e.error.message) || e)));
     map.on('load', onLoad);
     map.on('mousedown', onDown);
