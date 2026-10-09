@@ -56,8 +56,9 @@ Vanilla JS, Mapbox GL JS **v3.9.0** from api.mapbox.com, no build step.
 - **Persistence:** localStorage key `wpb.v1` (settings + groups). Presets save/load as JSON `{view, groups, active, nextId}`.
 
 ## Deployment
-- Netlify project: **`weather-plate-builder`** (site ID `efca7ba6-a57f-477a-a7fc-197ebccf3585`), URL `https://weather-plate-builder.netlify.app`. First deployed 2026-10-08 by drag-and-drop with only `index.html` (no `config.json`), so the live site uses the manual settings form.
+- Netlify project: **`weather-plate-builder`** (site ID `efca7ba6-a57f-477a-a7fc-197ebccf3585`), URL `https://weather-plate-builder.netlify.app`. First deployed 2026-10-08 by drag-and-drop (old tool, no `config.json`). Redeployed 2026-10-09 from `site/` (deploy `6ac8e7cce7e622ba64540993`): current tool + `config.json`.
 - Deploy: `netlify deploy --prod --dir site --site efca7ba6-a57f-477a-a7fc-197ebccf3585`, or drag the `site/` folder onto the project's Deploys page.
+- From a Claude Code cloud session: the Netlify MCP `deploy-site` returns an `npx @netlify/mcp … --site-id …` command. Run it **from inside `site/`** (it uploads the current directory) with `NODE_USE_ENV_PROXY=1`, or Node's fetch bypasses the egress proxy and fails with `fetch failed`.
 - The owner has other unrelated Netlify sites on the same team. **Never deploy to any site other than this one.**
 - The Mapbox public token in `config.json` is intentionally public. It must be URL-restricted to the Netlify domain in Mapbox account settings.
 - `site/config.json` has the real token and style and uses the public `counties` file, so no county tileset is needed. To switch to a sharper uploaded tileset later, add `tileset` and `sourceLayer`; they take precedence.
