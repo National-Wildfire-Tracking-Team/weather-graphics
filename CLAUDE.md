@@ -14,11 +14,20 @@ CLAUDE.md
 site/
   index.html        # the tool
   config.json       # shared site config: token, style, tileset (see below)
+  studio/           # Newsroom Graphics Studio (multi-file static app; see site/studio/README.md)
+tests/              # Playwright e2e suites for the Studio (tests/run-all.sh)
 style/
   weather-broadcast-style.json   # reference Mapbox style JSON (v8)
   weather-broadcast-dark.studio.json  # live Studio style + fixes (US-only cities, county-lines), ready to upload
 ```
 `.netlify` is in `.gitignore` for when the site gets linked with the Netlify CLI.
+
+## Newsroom Graphics Studio (site/studio/)
+A second, larger app next to the Plate Builder (which is untouched): editor + Map Studio + template library + export engine. Vanilla JS modules loaded by `<script>` tags in `studio/index.html` (no build step), Fabric.js 5.3.1 and Mapbox GL JS 3.9.0 (same engine/token/style as the Plate Builder, read from `../config.json`). Full docs, limitations and remaining work: `site/studio/README.md`.
+- Module map: `store.js` (IndexedDB + project model) · `providers.js` (data-layer registry; add sources here) · `mapscene.js` (map runtime, `NS.renderMapCanvas` = native high-res map render) · `editor.js` (Fabric engine, `fabric.MapFrame`) · `charts.js` · `templates.js` · `export.js`/`exportui.js` · `editorui.js` · `mapstudio.js` · `app.js` (router/views).
+- Contract: map state lives in `MapFrame.mapState` (GeoJSON features, layers, view) and is never flattened; exports re-render maps at the target pixel ratio. Never fabricate weather data: unconfigured layers stay "Not configured", failed fetches show errors, templates flag sample content.
+- Persistence is browser-local (IndexedDB); do not describe it as shared/team storage.
+- Tests: serve `site/` on :8765, then `tests/run-all.sh` (needs network for Mapbox and public data).
 
 ## Basemap style (style/weather-broadcast-style.json)
 - Source: `mapbox://mapbox.mapbox-streets-v8` as `composite`.
