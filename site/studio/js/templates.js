@@ -292,7 +292,20 @@
   def('gn-quote-wide', 'Quote card (wide)', 'general', 1920, 1080, 'Landscape quote card.', quoteCard({ w: 1920, h: 1080 }), ['quote']);
   def('gn-blank-map', 'Blank map graphic', 'general', 1920, 1080, 'A full-frame map with header bar; start here for custom map graphics.', mapGraphic({ title: 'MAP TITLE', subtitle: 'Subtitle', view: 'Lower 48', layers: [], sample: false }), ['map']);
 
+  // Map graphic for a user-selected NWS alert filter (see alerts.js). `o` = {title, subtitle, accent, style, extent, projection, filter, color, data}.
+  async function alertGraphic(brand, o) {
+    await NS.prepareFonts([brand.fonts.display, brand.fonts.body, brand.fonts.mono]);
+    const r = mapGraphic({ title: o.title, subtitle: o.subtitle, view: 'Lower 48', layers: [], style: o.style, accent: o.accent, sample: false, alertType: o.title, source: 'NOAA / National Weather Service', projection: o.projection })(brand);
+    const m = r.objects.find(x => x.type === 'MapFrame'), st = m.mapState; st.projection = o.projection;
+    st.fit = { extent: o.extent, padding: { top: 150, bottom: 60, left: 40, right: 40 } }; st.extent = o.extent;
+    st.layers['nws-custom'] = { on: true, opacity: 0.85, filter: o.filter, color: o.color || null }; st.layerOrder.push('nws-custom'); st.layerData['nws-custom'] = { fetchedAt: Date.now(), data: o.data };
+    const p = NS.blankProject(r.canvas.w, r.canvas.h, o.title, 'severe');
+    Object.assign(p, { canvas: r.canvas, objects: r.objects, fields: r.fields || {}, fieldDefs: r.fieldDefs || [], templateId: 'nws-alert' });
+    return p;
+  }
+
   NS.Templates = {
+    alertGraphic,
     list: T,
     async instantiate(t, brand) {
       await NS.prepareFonts([brand.fonts.display, brand.fonts.body, brand.fonts.mono]);

@@ -28,6 +28,69 @@
     }
   });
 
+  /* ---------- NWS alert explorer ----------
+     Loads every active NWS alert, lets the UI filter by event / state / severity, and turns a selection into GeoJSON.
+     Many alerts (watches, advisories, winter/heat/marine products) carry no polygon, only a list of NWS zones, so the
+     zone shapes are fetched from api.weather.gov and drawn instead. Nothing is invented: zones that fail to load are reported. */
+  const STATES = new Set('AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY PR VI GU AS MP'.split(' '));
+  const MAX_ZONES = 700;
+  const ugcState = u => (STATES.has(u.slice(0, 2)) && (u[2] === 'Z' || u[2] === 'C')) ? u.slice(0, 2) : 'Marine/other';
+  const eventColor = ev => /Tornado (Warning|Emergency)|Extreme Wind|Hurricane Warning|Flash Flood Emergency/.test(ev) ? '#F2453D'
+    : /Warning$/.test(ev) ? '#F2453D' : /Watch$/.test(ev) ? '#F2B53D' : /Advisory$/.test(ev) ? '#4C9BFF' : /Statement$|Outlook$/.test(ev) ? '#3FB6C9' : '#9AA7B8';
+  const roundGeom = g => { const r = c => typeof c[0] === 'number' ? [+c[0].toFixed(4), +c[1].toFixed(4)] : c.map(r); return g && g.coordinates ? { type: g.type, coordinates: r(g.coordinates) } : g; };
+  const zoneCache = new Map();
+  const NWS = NS.NWS = {
+    MAX_ZONES, eventColor, loaded: null,
+    async loadActive() {
+      const d = await fetchJSON('https://api.weather.gov/alerts/active?status=actual&message_type=alert,update', 60000);
+      const list = (d.features || []).map(f => {
+        const p = f.properties || {}, ugc = (p.geocode && p.geocode.UGC) || [];
+        return { id: f.id || p.id, event: p.event, severity: p.severity || 'Unknown', headline: p.headline, areaDesc: p.areaDesc, sent: p.sent, expires: p.expires, sender: p.senderName,
+          geometry: f.geometry || null, zones: p.affectedZones || [], states: Array.from(new Set(ugc.map(ugcState))) };
+      }).filter(a => a.event);
+      return (NWS.loaded = { fetchedAt: Date.now(), alerts: list });
+    },
+    filter(list, f) {
+      f = f || {};
+      return list.filter(a => (!f.events || !f.events.length || f.events.includes(a.event)) && (!f.states || !f.states.length || a.states.some(s => f.states.includes(s)))
+        && (!f.severities || !f.severities.length || f.severities.includes(a.severity)));
+    },
+    // Zone URLs that would have to be fetched for polygon-less alerts under filter f (states restrict zones, not just alerts).
+    zoneUrls(alerts, f) {
+      const out = new Set();
+      alerts.forEach(a => { if (!a.geometry) a.zones.forEach(u => { if (!f.states || !f.states.length || f.states.includes(ugcState(u.split('/').pop()))) out.add(u); }); });
+      return Array.from(out);
+    },
+    async build(alerts, f, color, onProgress) {
+      f = f || {}; const feats = [], notes = [], byZone = new Map();
+      const props = (a, extra) => Object.assign({ event: a.event, headline: a.headline, areaDesc: a.areaDesc, severity: a.severity, expires: a.expires, sent: a.sent, sender: a.sender, color: color || eventColor(a.event) }, extra);
+      alerts.forEach(a => {
+        if (a.geometry) { feats.push({ type: 'Feature', geometry: roundGeom(a.geometry), properties: props(a) }); return; }
+        a.zones.forEach(u => {
+          if (f.states && f.states.length && !f.states.includes(ugcState(u.split('/').pop()))) return;
+          const l = byZone.get(u) || byZone.set(u, new Map()).get(u); if (!l.has(a.event)) l.set(a.event, a);
+        });
+      });
+      const urls = Array.from(byZone.keys());
+      if (urls.length > MAX_ZONES) throw new Error(urls.length + ' alert areas are too many to draw (limit ' + MAX_ZONES + '). Narrow the selection with a state filter.');
+      let done = 0, failed = 0, next = 0;
+      const worker = async () => {
+        while (next < urls.length) {
+          const u = urls[next++];
+          try {
+            if (!zoneCache.has(u)) { const z = await fetchJSON(u, 20000); zoneCache.set(u, z && z.geometry ? roundGeom(z.geometry) : null); }
+            const g = zoneCache.get(u); if (!g) failed++; else byZone.get(u).forEach(a => feats.push({ type: 'Feature', geometry: g, properties: props(a, { zone: u.split('/').pop() }) }));
+          } catch (e) { failed++; }
+          onProgress && onProgress(++done, urls.length);
+        }
+      };
+      await Promise.all(Array.from({ length: 8 }, worker));
+      if (failed) notes.push(failed + ' of ' + urls.length + ' alert zone shapes could not be loaded and are missing from the map.');
+      if (urls.length && failed === urls.length && !feats.length) throw new Error('Could not load alert zone shapes from api.weather.gov.');
+      const fc = FC(feats); fc.notes = notes; return fc;
+    }
+  };
+
   const NHC = 'https://mapservices.weather.noaa.gov/tropical/rest/services/tropical/NHC_tropical_weather/MapServer';
   async function nhcFetch() {
     const meta = await fetchJSON(NHC + '?f=json');
@@ -54,6 +117,18 @@
     nwsAlert('nws-svr', 'Severe thunderstorm warnings', 'Severe Thunderstorm Warning', '#F2B53D'),
     nwsAlert('nws-ffw', 'Flash flood warnings', 'Flash Flood Warning', '#4C9BFF'),
     nwsAlert('nws-flood', 'Flood warnings', 'Flood Warning', '#3FB6C9'),
+    {
+      id: 'nws-custom', group: 'Severe weather', name: 'NWS alerts (selected types)', mode: 'geojson', style: { color: '#F2453D', kind: 'poly', perFeatureColor: true },
+      supplies: 'Any NWS alert type (warnings, watches, advisories, statements), filtered by event, state and severity. Polygon alerts are drawn as issued; zone-based alerts are drawn from the NWS zone shapes.',
+      attribution: 'NOAA / National Weather Service (api.weather.gov)', updateFreq: 'Continuous; refresh manually', staleAfter: 10 * MIN,
+      limitations: 'Choose the alert types in NWS Alert Graphics (the filter is stored with the graphic). Zone-based alerts show whole NWS zones, which can be larger than the area actually affected. Snapshot is frozen when fetched; press Refresh to update.',
+      async fetch(cfg) {
+        const f = cfg && cfg.filter;
+        if (!f || !f.events || !f.events.length) throw new Error('No alert type selected. Create this graphic from NWS Alert Graphics.');
+        const { alerts } = await NWS.loadActive();
+        return NWS.build(NWS.filter(alerts, f), f, cfg.color || null);
+      }
+    },
     {
       id: 'nhc-tropical', group: 'Tropical', name: 'NHC active tropical cyclones', mode: 'geojson', style: { kind: 'tropical' },
       supplies: 'Forecast cone, forecast track and points, past track and points for active storms (Atlantic, East and Central Pacific).',

@@ -195,7 +195,7 @@
         }
         const snap = s.layerData[p.id]; const data = p.mode === 'geojson-static' ? (NS.staticCache[p.id] || emptyFC()) : (snap && snap.data ? snap.data : emptyFC());
         if (!m.getSource(sid)) m.addSource(sid, { type: 'geojson', data }); else m.getSource(sid).setData(data);
-        const col = (p.style && p.style.color) || '#F2453D';
+        const col0 = (cfg && cfg.color) || (p.style && p.style.color) || '#F2453D', col = p.style && p.style.perFeatureColor ? ['coalesce', ['get', 'color'], col0] : col0;
         if (p.style && p.style.kind === 'tropical') this.installTropical(sid, op, before);
         else {
           if (p.style.kind === 'poly' && !m.getLayer(sid + '-fill')) m.addLayer({ id: sid + '-fill', type: 'fill', source: sid, paint: { 'fill-color': col, 'fill-opacity': 0.35 * op / 0.85 } }, before);
@@ -279,7 +279,7 @@
     const p = NS.Providers.find(x => x.id === id); if (!p || !p.fetch) return;
     NS.layerStatus[id] = { state: 'loading' }; onChange && onChange();
     try {
-      const data = await p.fetch();
+      const data = await p.fetch(state.layers[id]);
       if (p.mode === 'geojson-static') { NS.staticCache[id] = data; state.layerData[id] = { fetchedAt: Date.now(), static: true }; }
       else state.layerData[id] = { fetchedAt: Date.now(), data };
       NS.layerStatus[id] = { state: 'ok' };
