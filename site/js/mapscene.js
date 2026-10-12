@@ -5,7 +5,7 @@
   NS.config = { token: '', style: '', projection: null };
   NS.loadConfig = async function () {
     try {
-      const r = await fetch('../config.json', { cache: 'no-store' });
+      const r = await fetch('config.json', { cache: 'no-store' });
       if (r.ok) { const c = await r.json(); ['token', 'style'].forEach(k => { if (typeof c[k] === 'string' && !/REPLACE_ME/.test(c[k])) NS.config[k] = c[k]; }); NS.config.projection = c.projection || null; }
     } catch (e) { /* offline or file:// */ }
     try { const s = await NS.Store.get('settings', 'map'); if (s) { if (s.token && !NS.config.token) NS.config.token = s.token; if (s.style && !NS.config.style) NS.config.style = s.style; } } catch (e) {}

@@ -1,7 +1,7 @@
 # Newsroom Graphics Studio
 
-A browser-based graphics studio for newsroom, weather and broadcast graphics, served as static files under `site/studio/`
-(`https://weather-plate-builder.netlify.app/studio/` once deployed). It sits beside the original Weather Plate Builder (`site/index.html`), which is unchanged.
+A browser-based graphics studio for newsroom, weather and broadcast graphics, served as static files from `site/` (it is the home page)
+(`/` on the deployed site; `/studio/` redirects here). It sits beside the original Weather Plate Builder (`site/plate-builder.html`, linked from the sidebar), which is unchanged.
 
 **Stack:** vanilla JS (no build step, matching the repo), [Fabric.js 5.3.1](https://fabricjs.com/) for the editor, [Mapbox GL JS 3.9.0](https://docs.mapbox.com/mapbox-gl-js/) for maps
 (already used by the Plate Builder, so no second map engine). Fonts: Google Fonts (Barlow, Barlow Condensed, Oswald, Merriweather, Roboto Mono).
@@ -11,9 +11,9 @@ Libraries are pinned to exact versions and loaded from cdnjs / api.mapbox.com / 
 
 ```bash
 cd site && python3 -m http.server 8765      # any static server works
-open http://localhost:8765/studio/
+open http://localhost:8765/
 ```
-It must be served over http(s) (not `file://`) so `../config.json` can be fetched and IndexedDB works.
+It must be served over http(s) (not `file://`) so `config.json` can be fetched and IndexedDB works.
 
 ## Configuration and environment variables
 
