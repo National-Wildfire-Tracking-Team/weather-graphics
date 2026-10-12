@@ -135,6 +135,7 @@
 
       /* ---------- left: search, view, style, layers ---------- */
       const q = { text: '', results: [], err: '' };
+      const lyrUI = { text: '', onlyOn: false, open: {} };   // data-layer list UI state; survives renderLeft()
       function renderLeft() {
         left.innerHTML = '';
         const input = h('input', { type: 'search', id: 'msSearch', placeholder: 'Search city, county, state, address…', 'aria-label': 'Geographic search', value: q.text, style: 'width:100%', onkeydown: e => { if (e.key === 'Enter') doSearch(e.target.value); }, oninput: e => { q.text = e.target.value; } });
@@ -158,7 +159,33 @@
         left.append(tg);
         const groups = {}; NS.Providers.forEach(p => (groups[p.group] = groups[p.group] || []).push(p));
         const dl = h('div', { class: 'sec' }, h('h4', {}, 'Data layers'), h('div', { class: 'hint' }, 'Live layers are only shown when their source returns data. Snapshots are frozen when fetched.'));
-        Object.entries(groups).forEach(([g, ps]) => { dl.append(h('div', { class: 'hint', style: 'margin-top:8px;font-weight:600' }, g)); ps.forEach(p => dl.append(layerRow(p))); });
+        // Filter + collapsible groups. Filtering toggles row visibility in place (no re-render), so the search box keeps focus.
+        const entries = [], gEls = [];
+        const apply = () => {
+          const t = lyrUI.text.trim().toLowerCase(), filtering = !!t || lyrUI.onlyOn;
+          gEls.forEach(({ det, g, rows, count }) => {
+            let vis = 0;
+            rows.forEach(({ p, row }) => {
+              const on = !!(state.layers[p.id] && state.layers[p.id].on), show = (!t || (p.name + ' ' + g + ' ' + (p.attribution || '')).toLowerCase().includes(t)) && (!lyrUI.onlyOn || on);
+              row.style.display = show ? '' : 'none'; if (show) vis++;
+            });
+            det.style.display = vis ? '' : 'none';
+            det.open = filtering ? vis > 0 : (g in lyrUI.open ? lyrUI.open[g] : rows.some(({ p }) => state.layers[p.id] && state.layers[p.id].on));
+            count.textContent = filtering ? vis + ' of ' + rows.length : rows.length + (rows.filter(({ p }) => state.layers[p.id] && state.layers[p.id].on).length ? ' · ' + rows.filter(({ p }) => state.layers[p.id] && state.layers[p.id].on).length + ' on' : '');
+          });
+          none.style.display = gEls.some(({ det }) => det.style.display !== 'none') ? 'none' : '';
+        };
+        const none = h('div', { class: 'hint', style: 'display:none;margin-top:8px' }, 'No layers match.');
+        dl.append(h('div', { class: 'row', style: 'gap:6px;margin-top:6px' },
+          h('input', { type: 'search', id: 'lyrFilter', placeholder: 'Filter layers…', 'aria-label': 'Filter data layers', value: lyrUI.text, style: 'flex:1;min-width:0', oninput: e => { lyrUI.text = e.target.value; apply(); } }),
+          h('label', { class: 'hint', style: 'white-space:nowrap' }, h('input', { type: 'checkbox', id: 'lyrOnlyOn', checked: lyrUI.onlyOn, onchange: e => { lyrUI.onlyOn = e.target.checked; apply(); } }), ' On only')));
+        Object.entries(groups).forEach(([g, ps]) => {
+          const count = h('small', { style: 'display:inline;margin-left:6px;font-weight:400' }), det = h('details', { class: 'lgrp' }, h('summary', { style: 'font-weight:600;cursor:pointer;margin-top:8px' }, g, count));
+          det.addEventListener('toggle', () => { if (!lyrUI.text.trim() && !lyrUI.onlyOn) lyrUI.open[g] = det.open; });
+          const rows = ps.map(p => { const row = layerRow(p); det.append(row); return { p, row }; });
+          gEls.push({ det, g, rows, count }); dl.append(det);
+        });
+        dl.append(none); apply();
         left.append(dl);
         left.append(importExportSec(), savedViewsSec());
       }
