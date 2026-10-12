@@ -65,6 +65,14 @@ await page.click('#msUndo'); await page.waitForTimeout(200); check('map undo res
 await ev(() => NS.MapStudio.current.importGeoJSON({ type: 'FeatureCollection', features: [{ type: 'Feature', properties: { name: 'Test A', stroke: '#00ff00' }, geometry: { type: 'LineString', coordinates: [[-84, 33], [-83, 34]] } }, { type: 'Feature', properties: {}, geometry: { type: 'MultiPolygon', coordinates: [[[[-85, 32], [-84, 32], [-84, 33], [-85, 32]]], [[[-82, 32], [-81, 32], [-81, 33], [-82, 32]]]] } }] }));
 check('GeoJSON import (incl. multipolygon split)', (await nf()).length === nBefore + 3, await nf());
 check('import rejects bad GeoJSON', await ev(() => { try { NS.MapStudio.current.importGeoJSON({ type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [500, 500] } }] }); return false; } catch (e) { return /longitude/.test(e.message); } }));
+// layer list: filter + collapsible groups
+const lyrVisible = () => ev(() => [...document.querySelectorAll('.lyr input[id^="lyr-"]')].filter(i => i.offsetParent).map(i => i.id));
+await page.fill('#lyrFilter', 'tornado'); await page.waitForTimeout(100);
+const fv = await lyrVisible(); check('layer filter shows only matching layers (and expands their groups)', fv.length > 0 && fv.every(id => /tornado/.test(id)) && fv.includes('lyr-nws-tornado'), fv);
+await page.fill('#lyrFilter', 'zzzz-no-such-layer'); await page.waitForTimeout(100);
+check('layer filter with no matches shows nothing', (await lyrVisible()).length === 0);
+await page.fill('#lyrFilter', ''); await page.waitForTimeout(100);
+await ev(() => document.querySelectorAll('details.lgrp').forEach(d => { d.open = true; }));
 // layers
 await page.check('#lyr-radar-nexrad'); await page.waitForTimeout(3000);
 check('radar raster layer added', await ev(() => !!NS.MapStudio.current.map.getLayer('ns-ov-radar-nexrad-raster')));

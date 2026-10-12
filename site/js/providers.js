@@ -148,6 +148,24 @@
     }
   });
 
+  /* ---------- SPC convective outlooks ----------
+     Official Storm Prediction Center polygons, colored with SPC's own fill colors (shipped in each feature).
+     Overview = categorical outlook; Likelihood = probability of the hazard; Intensity = conditional intensity (significant-severe) area. */
+  const SPC = 'https://mapservices.weather.noaa.gov/vector/rest/services/outlooks/SPC_wx_outlks/MapServer';
+  const SPC_KIND = { overview: 'categorical risk categories', likelihood: 'probability of the hazard within 25 miles of a point', intensity: 'conditional intensity (area where significant severe is possible)' };
+  const spcOutlook = (id, name, layer, kind, day) => ({
+    id, group: 'Convective outlooks', name, mode: 'geojson', style: { color: '#F2B53D', kind: 'poly', perFeatureColor: true, solid: kind !== 'intensity' },
+    supplies: 'SPC ' + day + ' convective outlook: ' + SPC_KIND[kind] + '.',
+    attribution: 'NOAA / NWS Storm Prediction Center', updateFreq: 'Issued several times daily; refresh manually', staleAfter: 8 * 3600000,
+    limitations: 'Official SPC polygons drawn as issued, with SPC\'s colors. ' + (kind === 'intensity' ? 'Intensity areas only exist when SPC outlines a significant-severe area, so this layer is often empty. ' : 'Empty when SPC issues no outlook for that hazard. ') + 'Check the valid and issue times on the SPC site before publishing. Snapshot is frozen when fetched; press Refresh to update.',
+    async fetch() {
+      const d = await fetchJSON(SPC + '/' + layer + '/query?where=1%3D1&outFields=dn,label,label2,stroke,fill,valid,issue&outSR=4326&maxAllowableOffset=0.01&geometryPrecision=3&f=geojson', 45000);
+      // Higher-risk polygons sit inside lower ones, so draw low first. SPC returns a placeholder row (no label/fill) when a day has no outlook; skip it.
+      return FC((d.features || []).filter(f => f.properties && f.properties.fill).map(f => { f.properties = Object.assign({}, f.properties, { color: f.properties.fill }); return f; })
+        .sort((a, b) => a.properties.dn - b.properties.dn));
+    }
+  });
+
   window.NS.Providers = [
     nwsAlert('nws-tornado', 'Tornado warnings', 'Tornado Warning', '#F2453D'),
     nwsAlert('nws-svr', 'Severe thunderstorm warnings', 'Severe Thunderstorm Warning', '#F2B53D'),
@@ -211,6 +229,28 @@
     wpcSnow('snow-fcst', 'Snowfall outlook (WPC, 4+ in, Day 1)', 1, 'Day 1'),
     wpcSnow('snow-fcst-d2', 'Snowfall outlook (WPC, 4+ in, Day 2)', 6, 'Day 2'),
     wpcSnow('snow-fcst-d3', 'Snowfall outlook (WPC, 4+ in, Day 3)', 11, 'Day 3'),
+    spcOutlook('spc-d1-overview', 'SPC Day 1 Overview', 1, 'overview', 'Day 1'),
+    spcOutlook('spc-d1-tornado-lik', 'SPC Day 1 Tornado Likelihood', 3, 'likelihood', 'Day 1'),
+    spcOutlook('spc-d1-tornado-int', 'SPC Day 1 Tornado Intensity', 2, 'intensity', 'Day 1'),
+    spcOutlook('spc-d1-hail-lik', 'SPC Day 1 Hail Likelihood', 5, 'likelihood', 'Day 1'),
+    spcOutlook('spc-d1-hail-int', 'SPC Day 1 Hail Intensity', 4, 'intensity', 'Day 1'),
+    spcOutlook('spc-d1-wind-lik', 'SPC Day 1 Wind Likelihood', 7, 'likelihood', 'Day 1'),
+    spcOutlook('spc-d1-wind-int', 'SPC Day 1 Wind Intensity', 6, 'intensity', 'Day 1'),
+    spcOutlook('spc-d2-overview', 'SPC Day 2 Overview', 9, 'overview', 'Day 2'),
+    spcOutlook('spc-d2-tornado-lik', 'SPC Day 2 Tornado Likelihood', 11, 'likelihood', 'Day 2'),
+    spcOutlook('spc-d2-tornado-int', 'SPC Day 2 Tornado Intensity', 10, 'intensity', 'Day 2'),
+    spcOutlook('spc-d2-hail-lik', 'SPC Day 2 Hail Likelihood', 13, 'likelihood', 'Day 2'),
+    spcOutlook('spc-d2-hail-int', 'SPC Day 2 Hail Intensity', 12, 'intensity', 'Day 2'),
+    spcOutlook('spc-d2-wind-lik', 'SPC Day 2 Wind Likelihood', 15, 'likelihood', 'Day 2'),
+    spcOutlook('spc-d2-wind-int', 'SPC Day 2 Wind Intensity', 14, 'intensity', 'Day 2'),
+    spcOutlook('spc-d3-overview', 'SPC Day 3 Overview', 17, 'overview', 'Day 3'),
+    spcOutlook('spc-d3-severe-lik', 'SPC Day 3 Severe Likelihood (all hazards)', 19, 'likelihood', 'Day 3'),
+    spcOutlook('spc-d3-severe-int', 'SPC Day 3 Severe Intensity (all hazards)', 18, 'intensity', 'Day 3'),
+    spcOutlook('spc-d4-severe-lik', 'SPC Day 4 Severe Likelihood (all hazards)', 21, 'likelihood', 'Day 4'),
+    spcOutlook('spc-d5-severe-lik', 'SPC Day 5 Severe Likelihood (all hazards)', 22, 'likelihood', 'Day 5'),
+    spcOutlook('spc-d6-severe-lik', 'SPC Day 6 Severe Likelihood (all hazards)', 23, 'likelihood', 'Day 6'),
+    spcOutlook('spc-d7-severe-lik', 'SPC Day 7 Severe Likelihood (all hazards)', 24, 'likelihood', 'Day 7'),
+    spcOutlook('spc-d8-severe-lik', 'SPC Day 8 Severe Likelihood (all hazards)', 25, 'likelihood', 'Day 8'),
     // Declared but intentionally unconfigured: shown as "Not configured" until a verified source is added.
     // Checked 2026-10-12: NOAA NDFD temperature MapServer is stale (time extent ends 2025-08-28); FEMA NFHL flood zones export rendered
     // blank in testing and is zoom-limited; no national authoritative wind-grid, evacuation-zone or historical-track service was found.
