@@ -1,7 +1,7 @@
 # Newsroom Graphics Studio
 
-A browser-based graphics studio for newsroom, weather and broadcast graphics, served as static files under `site/studio/`
-(`https://weather-plate-builder.netlify.app/studio/` once deployed). It sits beside the original Weather Plate Builder (`site/index.html`), which is unchanged.
+A browser-based graphics studio for newsroom, weather and broadcast graphics, served as static files from `site/` (it is the home page)
+(`/` on the deployed site; `/studio/` redirects here). It sits beside the original Weather Plate Builder (`site/plate-builder.html`, linked from the sidebar), which is unchanged.
 
 **Stack:** vanilla JS (no build step, matching the repo), [Fabric.js 5.3.1](https://fabricjs.com/) for the editor, [Mapbox GL JS 3.9.0](https://docs.mapbox.com/mapbox-gl-js/) for maps
 (already used by the Plate Builder, so no second map engine). Fonts: Google Fonts (Barlow, Barlow Condensed, Oswald, Merriweather, Roboto Mono).
@@ -11,9 +11,9 @@ Libraries are pinned to exact versions and loaded from cdnjs / api.mapbox.com / 
 
 ```bash
 cd site && python3 -m http.server 8765      # any static server works
-open http://localhost:8765/studio/
+open http://localhost:8765/
 ```
-It must be served over http(s) (not `file://`) so `../config.json` can be fetched and IndexedDB works.
+It must be served over http(s) (not `file://`) so `config.json` can be fetched and IndexedDB works.
 
 ## Configuration and environment variables
 
@@ -36,7 +36,7 @@ There are **no server-side environment variables**; the app is fully static.
   full-screen mode, coordinate HUD, drawing tools (markers, labels, lines, routes, polygons, circles, arrows, track points with per-point labels), vertex/handle editing, drag-to-move, restyle, undo/redo, GeoJSON import/export, saved map configurations.
   Everything drawn is **editable GeoJSON in the project**, never a screenshot. Map state is stored separately from the canvas composition (`MapFrame.mapState`).
 - **Data layers (provider registry in `js/providers.js`):** NWS tornado / severe thunderstorm / flash flood / flood warning polygons (api.weather.gov), NHC active tropical cyclones (cone, forecast track/points, past track/points — NHC's own geometry), NIFC wildfire perimeters,
-  NEXRAD radar tiles (Iowa Environmental Mesonet), county boundaries (us-atlas). Each shows loading / ok / empty / stale / error. Warning/track data is **frozen as a snapshot** with its fetch time; press ⟳ to refresh. Rainfall (WPC QPF Day 1/2/3 and 7-day total) and snowfall (WPC probability of 4+ in, Day 1/2/3) are wired to NOAA/WPC polygon services and are frozen as snapshots like the alerts; the snowfall layers are probability outlooks, not amounts. Wind, temperature, evacuation zones, flood zones and historical tracks are still **Not configured**: as of 2026-10-12 the NOAA NDFD temperature service is stale (ends Aug 2025), the FEMA NFHL flood export rendered blank in testing and is zoom-limited, and no national authoritative wind, evacuation or track service was found. Import GeoJSON from an authoritative source instead.
+  NEXRAD radar tiles (Iowa Environmental Mesonet), county boundaries (us-atlas). Each shows loading / ok / empty / stale / error. Warning/track data is **frozen as a snapshot** with its fetch time; press ⟳ to refresh. Rainfall (WPC QPF: Days 1, 2, 3, 4-5, 6-7 and 2-, 3-, 5-, 7-day totals, drawn as solid fills) and snowfall (WPC probability of 4+ in, Day 1/2/3) are wired to NOAA/WPC polygon services and are frozen as snapshots like the alerts; the snowfall layers are probability outlooks, not amounts. Wind, temperature, evacuation zones, flood zones and historical tracks are still **Not configured**: as of 2026-10-12 the NOAA NDFD temperature service is stale (ends Aug 2025), the FEMA NFHL flood export rendered blank in testing and is zoom-limited, and no national authoritative wind, evacuation or track service was found. Import GeoJSON from an authoritative source instead.
 - **NWS Alert Graphics (`js/alerts.js`, sidebar → NWS Alert Graphics):** loads every active alert from api.weather.gov, lists the alert types with counts, and lets you tick one or more types, narrow by state and severity, then **Create graphic** (header, map fitted to the alerts, `nws-custom` layer). The filter is stored in the layer config so ⟳ in Map Studio re-fetches the same selection. Alerts without a polygon (most watches, advisories, winter/heat/marine products) are drawn from the NWS zone shapes (one request per zone, max 700; pick a state to stay under it), which are whole zones and can be larger than the area actually affected. Zones that fail to load are reported, never invented. Colors follow the alert type (warning red, watch amber, advisory blue) unless overridden.
 - **Templates:** 67 built-in templates (forecast panels, weather/severe/tropical maps, breaking news, broadcast overlays, social formats, closure lists, charts). Built from Brand Settings at creation time. Sample content is flagged with a SAMPLE badge and `sample` objects; export warns while any remain.
   Template **Fields** tab: title/subtitle, forecast and valid time, temperature (°F/°C) and wind (mph/kt/km/h) units, legend and attribution toggles, accent colour, storm/advisory fields. Save any project as a template, duplicate, favourite, group into collections.

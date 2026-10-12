@@ -1,5 +1,5 @@
 import { chromium } from '/opt/node22/lib/node_modules/playwright/index.mjs';
-export const BASE = process.env.BASE || 'http://localhost:8765/studio/index.html';
+export const BASE = process.env.BASE || 'http://localhost:8765/index.html';
 export async function launch(opts = {}) {
   const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', args: ['--no-sandbox', '--use-gl=swiftshader', '--enable-webgl', '--ignore-gpu-blocklist', '--enable-unsafe-swiftshader'] });
   const ctx = await b.newContext({ viewport: { width: 1600, height: 950 }, deviceScaleFactor: opts.dpr || 1, acceptDownloads: true });

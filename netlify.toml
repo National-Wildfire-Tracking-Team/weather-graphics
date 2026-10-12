@@ -1,6 +1,16 @@
-# Static site: no build step. The Weather Plate Builder is at / and the Newsroom Graphics Studio at /studio/.
+# Static site: no build step. The Newsroom Graphics Studio is the home page (/); the Weather Plate Builder is at /plate-builder.html.
 [build]
   publish = "site"
+
+[[redirects]]
+  from = "/studio"
+  to = "/"
+  status = 301
+
+[[redirects]]
+  from = "/studio/*"
+  to = "/:splat"
+  status = 301
 
 [[headers]]
   for = "/config.json"

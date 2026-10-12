@@ -5,7 +5,7 @@
   NS.config = { token: '', style: '', projection: null };
   NS.loadConfig = async function () {
     try {
-      const r = await fetch('../config.json', { cache: 'no-store' });
+      const r = await fetch('config.json', { cache: 'no-store' });
       if (r.ok) { const c = await r.json(); ['token', 'style'].forEach(k => { if (typeof c[k] === 'string' && !/REPLACE_ME/.test(c[k])) NS.config[k] = c[k]; }); NS.config.projection = c.projection || null; }
     } catch (e) { /* offline or file:// */ }
     try { const s = await NS.Store.get('settings', 'map'); if (s) { if (s.token && !NS.config.token) NS.config.token = s.token; if (s.style && !NS.config.style) NS.config.style = s.style; } } catch (e) {}
@@ -196,11 +196,12 @@
         const snap = s.layerData[p.id]; const data = p.mode === 'geojson-static' ? (NS.staticCache[p.id] || emptyFC()) : (snap && snap.data ? snap.data : emptyFC());
         if (!m.getSource(sid)) m.addSource(sid, { type: 'geojson', data }); else m.getSource(sid).setData(data);
         const col0 = (cfg && cfg.color) || (p.style && p.style.color) || '#F2453D', col = p.style && p.style.perFeatureColor ? ['coalesce', ['get', 'color'], col0] : col0;
+        const fillOp = p.style && p.style.solid ? Math.min(1, op / 0.85) : 0.35 * op / 0.85;   // solid fills are opaque at the default opacity
         if (p.style && p.style.kind === 'tropical') this.installTropical(sid, op, before);
         else {
-          if (p.style.kind === 'poly' && !m.getLayer(sid + '-fill')) m.addLayer({ id: sid + '-fill', type: 'fill', source: sid, paint: { 'fill-color': col, 'fill-opacity': 0.35 * op / 0.85 } }, before);
-          if (!m.getLayer(sid + '-line')) m.addLayer({ id: sid + '-line', type: 'line', source: sid, paint: { 'line-color': col, 'line-width': p.style.kind === 'line' ? 0.5 : 2, 'line-opacity': p.style.opacity != null ? p.style.opacity : op } }, before);
-          if (m.getLayer(sid + '-fill')) m.setPaintProperty(sid + '-fill', 'fill-opacity', 0.35 * op / 0.85);
+          if (p.style.kind === 'poly' && !m.getLayer(sid + '-fill')) m.addLayer({ id: sid + '-fill', type: 'fill', source: sid, paint: { 'fill-color': col, 'fill-opacity': fillOp } }, before);
+          if (!m.getLayer(sid + '-line')) m.addLayer({ id: sid + '-line', type: 'line', source: sid, paint: { 'line-color': col, 'line-width': p.style.kind === 'line' ? 0.5 : p.style.solid ? 0.6 : 2, 'line-opacity': p.style.opacity != null ? p.style.opacity : op } }, before);
+          if (m.getLayer(sid + '-fill')) m.setPaintProperty(sid + '-fill', 'fill-opacity', fillOp);
         }
       });
       // layer order: later in layerOrder = higher
