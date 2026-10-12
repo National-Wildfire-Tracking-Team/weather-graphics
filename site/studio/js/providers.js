@@ -112,6 +112,40 @@
     return FC(all);
   }
 
+  /* ---------- WPC forecast polygons (rainfall, snowfall) ----------
+     Real NWS/WPC product polygons, drawn as issued: nothing is interpolated or invented here.
+     Colors are assigned from each polygon's own value (QPF inches / outlook probability class). */
+  const WPC = 'https://mapservices.weather.noaa.gov/vector/rest/services/precip';
+  const QPF_COLORS = [[0.01, '#7FD1A8'], [0.1, '#3FB6C9'], [0.25, '#4C9BFF'], [0.5, '#2F6FE0'], [1, '#6A4CE0'], [1.5, '#B04CE0'], [2, '#F2453D'], [3, '#F2B53D']];
+  const qpfColor = q => { let c = QPF_COLORS[0][1]; QPF_COLORS.forEach(([t, k]) => { if (q >= t) c = k; }); return c; };
+  const SNOW_COLORS = { 1: '#4C9BFF', 2: '#B04CE0', 3: '#F2453D' };   // WPC outlook classes: Slight / Moderate / High
+  async function wpcQuery(service, layer, fields) {
+    const d = await fetchJSON(WPC + '/' + service + '/MapServer/' + layer + '/query?where=1%3D1&outFields=' + fields + '&outSR=4326&maxAllowableOffset=0.01&geometryPrecision=3&f=geojson', 45000);
+    return d.features || [];
+  }
+  const wpcQpf = (id, name, layer, span) => ({
+    id, group: 'Forecast', name, mode: 'geojson', style: { color: '#4C9BFF', kind: 'poly', perFeatureColor: true },
+    supplies: 'WPC quantitative precipitation forecast (' + span + '), as contoured polygons; color follows the forecast inches of each polygon.',
+    attribution: 'NOAA / NWS Weather Prediction Center (QPF)', updateFreq: 'Issued about every 6 hours; refresh manually', staleAfter: 8 * 3600000,
+    limitations: 'Forecast, not observed rainfall. Polygons are WPC\'s own contours (lightly simplified for display); the polygon\'s lower bound in inches is its value. Check the valid and issue times on the WPC site before publishing. Snapshot is frozen when fetched; press Refresh to update.',
+    async fetch() {
+      return FC((await wpcQuery('wpc_qpf', layer, 'qpf,units,valid_time,issue_time')).map(f => {
+        f.properties = Object.assign({}, f.properties, { color: qpfColor(+f.properties.qpf || 0) }); return f;
+      }));
+    }
+  });
+  const wpcSnow = (id, name, layer, day) => ({
+    id, group: 'Forecast', name, mode: 'geojson', style: { color: '#4C9BFF', kind: 'poly', perFeatureColor: true },
+    supplies: 'WPC probability of at least 4 inches of snow, ' + day + ' (Slight 10-39%, Moderate 40-69%, High 70-100%).',
+    attribution: 'NOAA / NWS Weather Prediction Center (Winter Weather)', updateFreq: 'Issued about every 6 to 12 hours; refresh manually', staleAfter: 12 * 3600000,
+    limitations: 'This is a probability outlook, not a snowfall-amount forecast, and it is often empty outside winter. Check the valid and issue times on the WPC site before publishing. Snapshot is frozen when fetched; press Refresh to update.',
+    async fetch() {
+      return FC((await wpcQuery('wpc_prob_winter_precip', layer, 'outlook,dn,valid_time,issue_time')).map(f => {
+        f.properties = Object.assign({}, f.properties, { color: SNOW_COLORS[Math.round(f.properties.dn)] || '#9AA7B8' }); return f;
+      }));
+    }
+  });
+
   window.NS.Providers = [
     nwsAlert('nws-tornado', 'Tornado warnings', 'Tornado Warning', '#F2453D'),
     nwsAlert('nws-svr', 'Severe thunderstorm warnings', 'Severe Thunderstorm Warning', '#F2B53D'),
@@ -163,8 +197,17 @@
         const f = topoToFC(d); return f;
       }
     },
+    wpcQpf('rain-fcst', 'Rainfall forecast (WPC QPF, Day 1)', 1, '24 h, Day 1'),
+    wpcQpf('rain-fcst-d2', 'Rainfall forecast (WPC QPF, Day 2)', 2, '24 h, Day 2'),
+    wpcQpf('rain-fcst-d3', 'Rainfall forecast (WPC QPF, Day 3)', 3, '24 h, Day 3'),
+    wpcQpf('rain-fcst-7d', 'Rainfall forecast (WPC QPF, 7-day total)', 11, '7-day accumulation'),
+    wpcSnow('snow-fcst', 'Snowfall outlook (WPC, 4+ in, Day 1)', 1, 'Day 1'),
+    wpcSnow('snow-fcst-d2', 'Snowfall outlook (WPC, 4+ in, Day 2)', 6, 'Day 2'),
+    wpcSnow('snow-fcst-d3', 'Snowfall outlook (WPC, 4+ in, Day 3)', 11, 'Day 3'),
     // Declared but intentionally unconfigured: shown as "Not configured" until a verified source is added.
-    ...[['rain-fcst', 'Rainfall forecast overlay'], ['snow-fcst', 'Snowfall forecast overlay'], ['wind-data', 'Wind data'], ['temp-data', 'Temperature data'],
+    // Checked 2026-10-12: NOAA NDFD temperature MapServer is stale (time extent ends 2025-08-28); FEMA NFHL flood zones export rendered
+    // blank in testing and is zoom-limited; no national authoritative wind-grid, evacuation-zone or historical-track service was found.
+    ...[['wind-data', 'Wind data'], ['temp-data', 'Temperature data'],
         ['evac-zones', 'Evacuation zones'], ['flood-zones', 'Flood zones'], ['storm-history', 'Historical storm tracks']].map(([id, name]) => ({
       id, group: 'Not configured', name, mode: 'none', supplies: name + '.', attribution: '', updateFreq: 'n/a', unconfigured: true,
       limitations: 'No verified data source is configured yet. Import GeoJSON from an authoritative source as a custom layer in the meantime.'
