@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs every e2e suite against a running static server (default http://localhost:8765/studio/index.html).
+# Runs every e2e suite against a running static server (default http://localhost:8765/index.html).
 set -u
 cd "$(dirname "$0")"
 rc=0

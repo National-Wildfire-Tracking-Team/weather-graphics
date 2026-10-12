@@ -4,7 +4,7 @@
   const NAV = [
     ['dashboard', 'Dashboard'], ['studio', 'Graphics Studio'], ['map', 'Interactive Map Studio'], ['sep', 'Workspaces'],
     ['weather', 'Weather Graphics'], ['alerts', 'NWS Alert Graphics'], ['news', 'Breaking News Graphics'], ['broadcast', 'Broadcast Graphics'], ['social', 'Social Media Graphics'], ['sep', 'Library'],
-    ['templates', 'Template Library'], ['assets', 'Asset Library'], ['projects', 'Saved Projects'], ['sep', 'Settings'], ['brand', 'Brand Settings'], ['exports', 'Export Center']
+    ['templates', 'Template Library'], ['assets', 'Asset Library'], ['projects', 'Saved Projects'], ['sep', 'Settings'], ['brand', 'Brand Settings'], ['exports', 'Export Center'], ['sep', 'Tools'], ['ext:plate-builder.html', 'Plate Builder (counties)']
   ];
   const main = document.getElementById('main'), nav = document.getElementById('nav');
   const App = NS.App = { editor: null };
@@ -212,7 +212,7 @@
   window.addEventListener('hashchange', render);
 
   async function boot() {
-    NAV.forEach(([id, l]) => nav.append(id === 'sep' ? h('div', { class: 'navsep' }, l) : h('a', { href: '#/' + id, 'data-r': id }, l)));
+    NAV.forEach(([id, l]) => nav.append(id === 'sep' ? h('div', { class: 'navsep' }, l) : h('a', Object.assign({ href: id.startsWith('ext:') ? id.slice(4) : '#/' + id, 'data-r': id }, id.startsWith('ext:') ? { target: '_blank', rel: 'noopener' } : {}), l)));
     await NS.loadConfig(); NS.prepareFonts(); NS.assetsReady = loadAssets(); await NS.assetsReady;
     const b = await NS.getBrand(); document.getElementById('orgName').textContent = (b.orgName || 'Newsroom').toUpperCase(); NS.brand = b;
     try { await NS.Store.get('settings', 'brand'); } catch (e) { toast('Browser storage is unavailable: ' + e.message + ' Nothing can be saved.', 'err', 12000); }

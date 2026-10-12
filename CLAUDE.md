@@ -5,16 +5,17 @@ A broadcast-weather graphics pipeline modeled on the Ryan Hall Y'all style: dark
 
 Pipeline:
 1. **Mapbox Studio style**: the dark basemap (land, water, borders, labels, county lines).
-2. **Weather Plate Builder** (`site/index.html`): a single-file web tool. Users click/drag to paint counties into colored risk groups, frame the shot, and export PNG "plates" at 1920×1080 or 3840×2160.
+2. **Weather Plate Builder** (`site/plate-builder.html`): a single-file web tool. Users click/drag to paint counties into colored risk groups, frame the shot, and export PNG "plates" at 1920×1080 or 3840×2160.
 3. **Affinity**: plate goes on the bottom layer; header bar, title, subtitle, footer, and logo sit on top.
 
 ## Repo layout
 ```
 CLAUDE.md
 site/
-  index.html        # the tool
+  index.html        # Newsroom Graphics Studio (home page, multi-file static app; see site/README.md)
+  js/, studio.css   # Studio modules and styles
+  plate-builder.html # the Weather Plate Builder (county painting tool), linked from the Studio sidebar
   config.json       # shared site config: token, style, tileset (see below)
-  studio/           # Newsroom Graphics Studio (multi-file static app; see site/studio/README.md)
 tests/              # Playwright e2e suites for the Studio (tests/run-all.sh)
 style/
   weather-broadcast-style.json   # reference Mapbox style JSON (v8)
@@ -22,8 +23,8 @@ style/
 ```
 `.netlify` is in `.gitignore` for when the site gets linked with the Netlify CLI.
 
-## Newsroom Graphics Studio (site/studio/)
-A second, larger app next to the Plate Builder (which is untouched): editor + Map Studio + template library + export engine. Vanilla JS modules loaded by `<script>` tags in `studio/index.html` (no build step), Fabric.js 5.3.1 and Mapbox GL JS 3.9.0 (same engine/token/style as the Plate Builder, read from `../config.json`). Full docs, limitations and remaining work: `site/studio/README.md`.
+## Newsroom Graphics Studio (site/ — the home page `/`)
+A second, larger app next to the Plate Builder (which is untouched): editor + Map Studio + template library + export engine. Vanilla JS modules loaded by `<script>` tags in `index.html` (no build step), Fabric.js 5.3.1 and Mapbox GL JS 3.9.0 (same engine/token/style as the Plate Builder, read from `../config.json`). Full docs, limitations and remaining work: `site/README.md`.
 - Module map: `store.js` (IndexedDB + project model) · `providers.js` (data-layer registry; add sources here) · `mapscene.js` (map runtime, `NS.renderMapCanvas` = native high-res map render) · `editor.js` (Fabric engine, `fabric.MapFrame`) · `charts.js` · `templates.js` · `export.js`/`exportui.js` · `editorui.js` · `mapstudio.js` · `app.js` (router/views).
 - Contract: map state lives in `MapFrame.mapState` (GeoJSON features, layers, view) and is never flattened; exports re-render maps at the target pixel ratio. Never fabricate weather data: unconfigured layers stay "Not configured", failed fetches show errors, templates flag sample content.
 - Persistence is browser-local (IndexedDB); do not describe it as shared/team storage.
@@ -53,7 +54,7 @@ A second, larger app next to the Plate Builder (which is untouched): editor + Ma
 | Header bar (Affinity) | `#0C1119` @ ~85%, ~130–140px tall at 1080p |
 | Title font | Barlow Condensed ExtraBold / Oswald Bold, `#F2453D` |
 
-## The tool (site/index.html)
+## The tool (site/plate-builder.html)
 Vanilla JS, Mapbox GL JS **v3.9.0** from api.mapbox.com, no build step.
 
 - **Fixed frame:** the map container is always 1920×1080 CSS px, scaled to fit the screen with a CSS transform, so preview framing equals export framing. An optional title-bar safe-area overlay (DOM only, never exported) marks the top 140px.
@@ -65,7 +66,7 @@ Vanilla JS, Mapbox GL JS **v3.9.0** from api.mapbox.com, no build step.
 - **Persistence:** localStorage key `wpb.v1` (settings + groups). Presets save/load as JSON `{view, groups, active, nextId}`.
 
 ## Deployment
-- **Current site: `snazzy-gumdrop-5718eb`** (site ID `2c7e39e4-1e7b-4d30-8cb8-a7d323649455`), `https://snazzy-gumdrop-5718eb.netlify.app`. `netlify.toml` publishes `site/` with no build; Plate Builder at `/`, Studio at `/studio/`. Link the GitHub repo in Netlify with production branch `main`. The notes below describe the older `weather-plate-builder` site (ID `efca7ba6-a57f-477a-a7fc-197ebccf3585`); for new deploys use the site above.
+- **Current site: `snazzy-gumdrop-5718eb`** (site ID `2c7e39e4-1e7b-4d30-8cb8-a7d323649455`), `https://snazzy-gumdrop-5718eb.netlify.app`. `netlify.toml` publishes `site/` with no build; Studio at `/`, Plate Builder at `/plate-builder.html` (`/studio/*` redirects to `/`). Link the GitHub repo in Netlify with production branch `main`. The notes below describe the older `weather-plate-builder` site (ID `efca7ba6-a57f-477a-a7fc-197ebccf3585`); for new deploys use the site above.
 - Netlify project: **`weather-plate-builder`** (site ID `efca7ba6-a57f-477a-a7fc-197ebccf3585`), URL `https://weather-plate-builder.netlify.app`. First deployed 2026-10-08 by drag-and-drop (old tool, no `config.json`). Redeployed 2026-10-09 from `site/` (deploy `6ac8e7cce7e622ba64540993`): current tool + `config.json`.
 - Deploy: `netlify deploy --prod --dir site --site efca7ba6-a57f-477a-a7fc-197ebccf3585`, or drag the `site/` folder onto the project's Deploys page.
 - From a Claude Code cloud session: the Netlify MCP `deploy-site` returns an `npx @netlify/mcp … --site-id …` command. Run it **from inside `site/`** (it uploads the current directory) with `NODE_USE_ENV_PROXY=1`, or Node's fetch bypasses the egress proxy and fails with `fetch failed`.
