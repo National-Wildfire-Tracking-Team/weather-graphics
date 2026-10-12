@@ -200,7 +200,7 @@
         if (p.style && p.style.kind === 'tropical') this.installTropical(sid, op, before);
         else {
           if (p.style.kind === 'poly' && !m.getLayer(sid + '-fill')) m.addLayer({ id: sid + '-fill', type: 'fill', source: sid, paint: { 'fill-color': col, 'fill-opacity': fillOp } }, before);
-          if (!m.getLayer(sid + '-line')) m.addLayer({ id: sid + '-line', type: 'line', source: sid, paint: { 'line-color': col, 'line-width': p.style.kind === 'line' ? 0.5 : 2, 'line-opacity': p.style.opacity != null ? p.style.opacity : op } }, before);
+          if (!m.getLayer(sid + '-line')) m.addLayer({ id: sid + '-line', type: 'line', source: sid, paint: { 'line-color': col, 'line-width': p.style.kind === 'line' ? 0.5 : p.style.solid ? 0.6 : 2, 'line-opacity': p.style.opacity != null ? p.style.opacity : op } }, before);
           if (m.getLayer(sid + '-fill')) m.setPaintProperty(sid + '-fill', 'fill-opacity', fillOp);
         }
       });

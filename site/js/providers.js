@@ -116,7 +116,8 @@
      Real NWS/WPC product polygons, drawn as issued: nothing is interpolated or invented here.
      Colors are assigned from each polygon's own value (QPF inches / outlook probability class). */
   const WPC = 'https://mapservices.weather.noaa.gov/vector/rest/services/precip';
-  const QPF_COLORS = [[0.01, '#7FD1A8'], [0.1, '#3FB6C9'], [0.25, '#4C9BFF'], [0.5, '#2F6FE0'], [1, '#6A4CE0'], [1.5, '#B04CE0'], [2, '#F2453D'], [3, '#F2B53D'], [4, '#FF8A3D'], [5, '#FF7AC8'], [7, '#FFFFFF'], [10, '#C9C2FF']];
+  const QPF_COLORS = [[0.01, '#9ADBF2'], [0.1, '#4FC3E8'], [0.25, '#3FBF7F'], [0.5, '#6FD04A'], [0.75, '#B5E04A'], [1, '#F2E84A'], [1.25, '#F7C63D'], [1.5, '#F59A3A'], [1.75, '#F2703A'],
+    [2, '#E8453D'], [2.5, '#D6283F'], [3, '#C2185B'], [4, '#A8179F'], [5, '#8A2BE2'], [7, '#6A3FD0'], [10, '#F0F0FF']];   // light blue → green → yellow → red → magenta → violet
   const qpfColor = q => { let c = QPF_COLORS[0][1]; QPF_COLORS.forEach(([t, k]) => { if (q >= t) c = k; }); return c; };
   const SNOW_COLORS = { 1: '#4C9BFF', 2: '#B04CE0', 3: '#F2453D' };   // WPC outlook classes: Slight / Moderate / High
   async function wpcQuery(service, layer, fields) {
