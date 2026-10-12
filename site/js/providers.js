@@ -116,7 +116,7 @@
      Real NWS/WPC product polygons, drawn as issued: nothing is interpolated or invented here.
      Colors are assigned from each polygon's own value (QPF inches / outlook probability class). */
   const WPC = 'https://mapservices.weather.noaa.gov/vector/rest/services/precip';
-  const QPF_COLORS = [[0.01, '#7FD1A8'], [0.1, '#3FB6C9'], [0.25, '#4C9BFF'], [0.5, '#2F6FE0'], [1, '#6A4CE0'], [1.5, '#B04CE0'], [2, '#F2453D'], [3, '#F2B53D']];
+  const QPF_COLORS = [[0.01, '#7FD1A8'], [0.1, '#3FB6C9'], [0.25, '#4C9BFF'], [0.5, '#2F6FE0'], [1, '#6A4CE0'], [1.5, '#B04CE0'], [2, '#F2453D'], [3, '#F2B53D'], [4, '#FF8A3D'], [5, '#FF7AC8'], [7, '#FFFFFF'], [10, '#C9C2FF']];
   const qpfColor = q => { let c = QPF_COLORS[0][1]; QPF_COLORS.forEach(([t, k]) => { if (q >= t) c = k; }); return c; };
   const SNOW_COLORS = { 1: '#4C9BFF', 2: '#B04CE0', 3: '#F2453D' };   // WPC outlook classes: Slight / Moderate / High
   async function wpcQuery(service, layer, fields) {
@@ -124,14 +124,15 @@
     return d.features || [];
   }
   const wpcQpf = (id, name, layer, span) => ({
-    id, group: 'Forecast', name, mode: 'geojson', style: { color: '#4C9BFF', kind: 'poly', perFeatureColor: true },
+    id, group: 'Forecast', name, mode: 'geojson', style: { color: '#4C9BFF', kind: 'poly', perFeatureColor: true, solid: true },
     supplies: 'WPC quantitative precipitation forecast (' + span + '), as contoured polygons; color follows the forecast inches of each polygon.',
     attribution: 'NOAA / NWS Weather Prediction Center (QPF)', updateFreq: 'Issued about every 6 hours; refresh manually', staleAfter: 8 * 3600000,
     limitations: 'Forecast, not observed rainfall. Polygons are WPC\'s own contours (lightly simplified for display); the polygon\'s lower bound in inches is its value. Check the valid and issue times on the WPC site before publishing. Snapshot is frozen when fetched; press Refresh to update.',
     async fetch() {
+      // Contours are nested: draw lowest amounts first so higher amounts sit on top of them.
       return FC((await wpcQuery('wpc_qpf', layer, 'qpf,units,valid_time,issue_time')).map(f => {
         f.properties = Object.assign({}, f.properties, { color: qpfColor(+f.properties.qpf || 0) }); return f;
-      }));
+      }).sort((a, b) => a.properties.qpf - b.properties.qpf));
     }
   });
   const wpcSnow = (id, name, layer, day) => ({
@@ -200,7 +201,12 @@
     wpcQpf('rain-fcst', 'Rainfall forecast (WPC QPF, Day 1)', 1, '24 h, Day 1'),
     wpcQpf('rain-fcst-d2', 'Rainfall forecast (WPC QPF, Day 2)', 2, '24 h, Day 2'),
     wpcQpf('rain-fcst-d3', 'Rainfall forecast (WPC QPF, Day 3)', 3, '24 h, Day 3'),
-    wpcQpf('rain-fcst-7d', 'Rainfall forecast (WPC QPF, 7-day total)', 11, '7-day accumulation'),
+    wpcQpf('rain-fcst-d45', 'Rainfall forecast (WPC QPF, Days 4-5)', 4, '48 h, Days 4-5'),
+    wpcQpf('rain-fcst-d67', 'Rainfall forecast (WPC QPF, Days 6-7)', 5, '48 h, Days 6-7'),
+    wpcQpf('rain-fcst-t2', 'Rainfall forecast (WPC QPF, 2-day total)', 8, '48 h accumulation, Days 1-2'),
+    wpcQpf('rain-fcst-t3', 'Rainfall forecast (WPC QPF, 3-day total)', 9, '72 h accumulation, Days 1-3'),
+    wpcQpf('rain-fcst-t5', 'Rainfall forecast (WPC QPF, 5-day total)', 10, '120 h accumulation, Days 1-5'),
+    wpcQpf('rain-fcst-7d', 'Rainfall forecast (WPC QPF, 7-day total)', 11, '168 h accumulation, Days 1-7'),
     wpcSnow('snow-fcst', 'Snowfall outlook (WPC, 4+ in, Day 1)', 1, 'Day 1'),
     wpcSnow('snow-fcst-d2', 'Snowfall outlook (WPC, 4+ in, Day 2)', 6, 'Day 2'),
     wpcSnow('snow-fcst-d3', 'Snowfall outlook (WPC, 4+ in, Day 3)', 11, 'Day 3'),
