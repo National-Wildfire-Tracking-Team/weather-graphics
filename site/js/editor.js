@@ -105,10 +105,24 @@
       json.objects.forEach(strip);
       return json.objects;
     }
-    syncProject() { this.p.objects = this.serialize(); this.p.updated = Date.now(); return this.p; }
+    /* Text typed directly on the canvas must win over the template field it is bound to; otherwise applyFields()
+       (run on load, preview and export) silently reverts it. Plain bindings write back to the field; formatted ones detach. */
+    reconcileFields() {
+      const f = this.p.fields || (this.p.fields = {}), s = this.p.settings || {};
+      (function walk(objs) {
+        (objs || []).forEach(o => {
+          if (o.fieldKey && o.type === 'textbox' && o.text !== NS.formatField(o, f, s)) {
+            const plain = (!o.fieldFmt || o.fieldFmt === 'upper') && (!o.fieldTpl || o.fieldTpl === '{v}{u}');
+            if (plain) f[o.fieldKey] = o.text; else o.fieldKey = null;
+          }
+          if (o._objects) walk(o._objects);
+        });
+      })(this.canvas.getObjects());
+    }
+    syncProject() { this.reconcileFields(); this.p.objects = this.serialize(); this.p.updated = Date.now(); return this.p; }
 
     /* ----- history ----- */
-    snapshot() { return JSON.stringify([this.serialize(), this.p.canvas, this.p.fields, this.p.settings]); }
+    snapshot() { this.reconcileFields(); return JSON.stringify([this.serialize(), this.p.canvas, this.p.fields, this.p.settings]); }
     initHistory() { this.hist = [this.snapshot()]; this.hi = 0; this.emitHist(); }
     commit(markDirty) {
       if (this.loading) return;
