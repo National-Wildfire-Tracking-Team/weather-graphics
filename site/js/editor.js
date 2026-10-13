@@ -33,6 +33,7 @@
         ctx.fillStyle = 'rgba(8,12,18,.6)'; const tw = ctx.measureText(txt).width; ctx.fillRect(x + w - tw - fs * 1.4, y + h - fs * 1.9, tw + fs * 1.4, fs * 1.9);
         ctx.fillStyle = '#E8EDF3'; ctx.fillText(txt, x + w - fs * 0.7, y + h - fs * 0.55);
       }
+      if (st && st.showLegend !== false && e && e.status === 'ok') NS.drawLegend(ctx, NS.legendEntries(st), x, y, w, h, st.legendPos || 'br');
       ctx.restore();
     },
     _toSVG() {
