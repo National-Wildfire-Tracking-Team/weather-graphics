@@ -253,6 +253,8 @@
           row('Style', $('span', {}, stl)), row('Projection', $('span', {}, st.projection)), row('Zoom', $('span', {}, st.zoom.toFixed(2))), row('Features', $('span', {}, st.features.features.length)),
           row('Data layers', $('span', {}, enabled.length ? enabled.join(', ') : 'none')),
           row('Attribution', $('label', {}, $('input', { type: 'checkbox', checked: st.showAttribution !== false, onchange: ev => { st.showAttribution = ev.target.checked; ed.canvas.requestRenderAll(); ed.commit(); } }), ' Show on graphic')),
+          row('Outlook legend', $('label', {}, $('input', { type: 'checkbox', checked: st.showLegend !== false, onchange: ev => { st.showLegend = ev.target.checked; ed.canvas.requestRenderAll(); ed.commit(); } }), ' Show on graphic'),
+            sel([['br', 'Bottom right'], ['bl', 'Bottom left'], ['tr', 'Top right'], ['tl', 'Top left']], st.legendPos || 'br', v => { st.legendPos = v; ed.canvas.requestRenderAll(); ed.commit(); }, 'Legend position')),
           $('div', { class: 'hint' }, 'The map re-renders at the export resolution; the on-canvas image is a preview. Resizing the frame keeps the saved map extent.'));
       }
       function chartSec(o) { return $('div', { class: 'sec' }, $('h4', {}, 'Chart data'), $('div', { class: 'btnrow' }, $('button', { class: 'btn primary', onclick: () => chartDialog(o.chartSpec.type, o) }, 'Edit data…'))); }
