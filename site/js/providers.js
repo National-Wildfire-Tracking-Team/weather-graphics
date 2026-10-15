@@ -112,10 +112,10 @@
     return FC(all);
   }
 
-  /* ---------- WPC forecast polygons (rainfall, snowfall) ----------
+  /* ---------- WPC forecast polygons (rainfall, excessive rainfall, snowfall) ----------
      Real NWS/WPC product polygons, drawn as issued: nothing is interpolated or invented here.
      Colors are assigned from each polygon's own value (QPF inches / outlook probability class). */
-  const WPC = 'https://mapservices.weather.noaa.gov/vector/rest/services/precip';
+  const WPC = 'https://mapservices.weather.noaa.gov/vector/rest/services';
   const QPF_COLORS = [[0.01, '#9ADBF2'], [0.1, '#4FC3E8'], [0.25, '#3FBF7F'], [0.5, '#6FD04A'], [0.75, '#B5E04A'], [1, '#F2E84A'], [1.25, '#F7C63D'], [1.5, '#F59A3A'], [1.75, '#F2703A'],
     [2, '#E8453D'], [2.5, '#D6283F'], [3, '#C2185B'], [4, '#A8179F'], [5, '#8A2BE2'], [7, '#6A3FD0'], [10, '#F0F0FF']];   // light blue → green → yellow → red → magenta → violet
   const qpfColor = q => { let c = QPF_COLORS[0][1]; QPF_COLORS.forEach(([t, k]) => { if (q >= t) c = k; }); return c; };
@@ -131,7 +131,7 @@
     limitations: 'Forecast, not observed rainfall. Polygons are WPC\'s own contours (lightly simplified for display); the polygon\'s lower bound in inches is its value. Check the valid and issue times on the WPC site before publishing. Snapshot is frozen when fetched; press Refresh to update.',
     async fetch() {
       // Contours are nested: draw lowest amounts first so higher amounts sit on top of them.
-      return FC((await wpcQuery('wpc_qpf', layer, 'qpf,units,valid_time,issue_time')).map(f => {
+      return FC((await wpcQuery('precip/wpc_qpf', layer, 'qpf,units,valid_time,issue_time')).map(f => {
         f.properties = Object.assign({}, f.properties, { color: qpfColor(+f.properties.qpf || 0) }); return f;
       }).sort((a, b) => a.properties.qpf - b.properties.qpf));
     }
@@ -142,9 +142,25 @@
     attribution: 'NOAA / NWS Weather Prediction Center (Winter Weather)', updateFreq: 'Issued about every 6 to 12 hours; refresh manually', staleAfter: 12 * 3600000,
     limitations: 'This is a probability outlook, not a snowfall-amount forecast, and it is often empty outside winter. Check the valid and issue times on the WPC site before publishing. Snapshot is frozen when fetched; press Refresh to update.',
     async fetch() {
-      return FC((await wpcQuery('wpc_prob_winter_precip', layer, 'outlook,dn,valid_time,issue_time')).map(f => {
+      return FC((await wpcQuery('precip/wpc_prob_winter_precip', layer, 'outlook,dn,valid_time,issue_time')).map(f => {
         f.properties = Object.assign({}, f.properties, { color: SNOW_COLORS[Math.round(f.properties.dn)] || '#9AA7B8' }); return f;
       }));
+    }
+  });
+
+  /* WPC Excessive Rainfall Outlook: probability that rainfall exceeds flash-flood guidance within 25 miles of a point.
+     Colors are WPC's own (from the service renderer): Marginal green, Slight yellow, Moderate red, High magenta. */
+  const ERO_COLORS = { 1: ['#38A800', '#00734C'], 2: ['#FFFE00', '#E69800'], 3: ['#F50000', '#8A0000'], 4: ['#FF69C5', '#FF00FF'] };
+  const wpcEro = (id, name, layer, day) => ({
+    id, group: 'Forecast', name, mode: 'geojson', style: { color: '#38A800', kind: 'poly', perFeatureColor: true, solid: true },
+    supplies: 'WPC Excessive Rainfall Outlook, ' + day + ': probability of rainfall exceeding flash flood guidance within 25 miles of a point (Marginal 5%+, Slight 15%+, Moderate 40%+, High 70%+).',
+    attribution: 'NOAA / NWS Weather Prediction Center (Excessive Rainfall Outlook)', updateFreq: 'Issued several times daily (Days 1-3), daily (Days 4-5); refresh manually', staleAfter: 12 * 3600000,
+    limitations: 'Official WPC polygons drawn as issued, with WPC\'s colors. Empty when WPC outlines no risk area for that day. Check the valid and issue times on the WPC site before publishing. Snapshot is frozen when fetched; press Refresh to update.',
+    async fetch() {
+      // Higher risk sits inside lower risk, so draw low first.
+      return FC((await wpcQuery('hazards/wpc_precip_hazards', layer, 'dn,outlook,product,valid_time,issue_time')).filter(f => f.properties && ERO_COLORS[f.properties.dn]).map(f => {
+        const c = ERO_COLORS[f.properties.dn]; f.properties = Object.assign({}, f.properties, { color: c[0], fill: c[0], stroke: c[1] }); return f;
+      }).sort((a, b) => a.properties.dn - b.properties.dn));
     }
   });
 
@@ -226,6 +242,11 @@
     wpcQpf('rain-fcst-t3', 'Rainfall forecast (WPC QPF, 3-day total)', 9, '72 h accumulation, Days 1-3'),
     wpcQpf('rain-fcst-t5', 'Rainfall forecast (WPC QPF, 5-day total)', 10, '120 h accumulation, Days 1-5'),
     wpcQpf('rain-fcst-7d', 'Rainfall forecast (WPC QPF, 7-day total)', 11, '168 h accumulation, Days 1-7'),
+    wpcEro('ero-d1', 'Excessive Rainfall Outlook (WPC, Day 1)', 0, 'Day 1'),
+    wpcEro('ero-d2', 'Excessive Rainfall Outlook (WPC, Day 2)', 1, 'Day 2'),
+    wpcEro('ero-d3', 'Excessive Rainfall Outlook (WPC, Day 3)', 2, 'Day 3'),
+    wpcEro('ero-d4', 'Excessive Rainfall Outlook (WPC, Day 4)', 3, 'Day 4'),
+    wpcEro('ero-d5', 'Excessive Rainfall Outlook (WPC, Day 5)', 4, 'Day 5'),
     wpcSnow('snow-fcst', 'Snowfall outlook (WPC, 4+ in, Day 1)', 1, 'Day 1'),
     wpcSnow('snow-fcst-d2', 'Snowfall outlook (WPC, 4+ in, Day 2)', 6, 'Day 2'),
     wpcSnow('snow-fcst-d3', 'Snowfall outlook (WPC, 4+ in, Day 3)', 11, 'Day 3'),

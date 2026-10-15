@@ -1,4 +1,4 @@
-/* SPC and WPC outlook legend, drawn on the map frame (preview and every export size).
+/* SPC and WPC outlook legend (convective, excessive rainfall, QPF, snowfall), drawn on the map frame (preview and every export size).
    Entries come from the polygons actually fetched for the enabled SPC/WPC layers: their own labels and colors, nothing invented.
    Only the plain-language descriptions are static text. */
 (function () {
@@ -7,18 +7,21 @@
     5: ['3/5 ENHANCED', 'numerous severe storms'], 6: ['4/5 MODERATE', 'widespread severe storms'], 8: ['5/5 HIGH', 'widespread, intense severe storms']
   };
   const SNOW = { 1: ['SLIGHT SNOW', '10-39% chance of 4+ in'], 2: ['MODERATE SNOW', '40-69% chance of 4+ in'], 3: ['HIGH SNOW', '70-100% chance of 4+ in'] };
-  const outlookLayers = state => NS.Providers.filter(p => /^(spc|rain-fcst|snow-fcst)/.test(p.id) && state.layers[p.id] && state.layers[p.id].on);
+  const ERO = { 1: ['1/4 MARGINAL', '5%+ chance of flash flooding rain'], 2: ['2/4 SLIGHT', '15%+ chance of flash flooding rain'],
+    3: ['3/4 MODERATE', '40%+ chance of flash flooding rain'], 4: ['4/4 HIGH', '70%+ chance of flash flooding rain'] };
+  const outlookLayers = state => NS.Providers.filter(p => /^(spc|rain-fcst|snow-fcst|ero)/.test(p.id) && state.layers[p.id] && state.layers[p.id].on);
 
   /* -> [{title, sub, fill, stroke, order}] for the SPC layers that are on and have data (deduplicated, lowest risk first). */
   NS.legendEntries = function (state) {
     const out = new Map();
     outlookLayers(state).forEach(p => {
-      const snap = state.layerData[p.id], feats = snap && snap.data && snap.data.features || [], kind = /^rain/.test(p.id) ? 3 : /^snow/.test(p.id) ? 4 : /overview$/.test(p.id) ? 0 : /-int$/.test(p.id) ? 2 : 1;
+      const snap = state.layerData[p.id], feats = snap && snap.data && snap.data.features || [], kind = /^ero/.test(p.id) ? 5 : /^rain/.test(p.id) ? 3 : /^snow/.test(p.id) ? 4 : /overview$/.test(p.id) ? 0 : /-int$/.test(p.id) ? 2 : 1;
       feats.forEach(f => {
         const q = f.properties || {};
         let title, sub, fill = q.fill, stroke = q.stroke, ord = q.dn;
         if (kind === 3) { if (q.qpf == null || !q.color) return; title = (+q.qpf < 0.1 ? '0.01' : (+q.qpf).toString()) + '" +'; sub = 'inches of rain forecast'; fill = q.color; stroke = q.color; ord = +q.qpf; }
         else if (kind === 4) { const c = SNOW[Math.round(q.dn)]; if (!c || !q.color) return; title = c[0]; sub = c[1]; fill = q.color; stroke = q.color; ord = Math.round(q.dn); }
+        else if (kind === 5) { const c = ERO[q.dn]; if (!c || !fill) return; title = c[0]; sub = c[1]; }
         else if (!fill || q.dn == null) return;
         else if (kind === 0) { const c = CATEGORY[q.dn]; if (!c) return; title = c[0]; sub = c[1]; }
         else if (kind === 1) { title = String(q.label2 || '').replace(/\s*Risk$/i, '').replace(/^(\d+%)\s+(.*)$/, '$1 $2').toUpperCase(); sub = 'chance within 25 miles of a point'; }
