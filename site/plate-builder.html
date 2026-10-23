@@ -102,12 +102,14 @@
     <select id="res">
       <option value="1">1920 × 1080</option>
       <option value="2">3840 × 2160 (4K)</option>
+      <option value="0.6666666666666666">1280 × 720 (StreamYard)</option>
     </select>
     <div class="row" style="margin-top:8px">
       <button class="primary" id="exp">Export plate</button>
       <button id="expBoth">Export risk + clean</button>
     </div>
     <small>“Risk + clean” downloads two PNGs: one with risk fill, one without.</small>
+    <small style="display:block;margin-top:6px">Live streams: plates are full-screen and opaque. <b>OBS</b>: add the 1920 × 1080 PNG as an Image source at the bottom of the scene. <b>StreamYard</b>: export 1280 × 720 and upload it under Brand → Backgrounds (as an overlay it would cover the cameras).</small>
 
     <h2>Presets</h2>
     <div class="row">
@@ -446,7 +448,7 @@
     a.download = 'plate_' + stamp + '_' + (withRisk ? 'risk' : 'clean') + '_' + w + 'x' + h + '.png';
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-    if (w !== 1920 * ratio || h !== 1080 * ratio) setStatus('Note: exported ' + w + '×' + h + ' (browser limited the size).');
+    if (w !== Math.round(1920 * ratio) || h !== Math.round(1080 * ratio)) setStatus('Note: exported ' + w + '×' + h + ' (browser limited the size).');
     else setStatus('Exported ' + w + '×' + h + ' PNG.');
   }
 
