@@ -18,7 +18,32 @@
     let n = 0; sc.getObjects().forEach(o => { if (!o.visible) return; const b = o.getBoundingRect(true, true); if (b.left < -1 || b.top < -1 || b.left + b.width > W + 1 || b.top + b.height > H + 1) n++; });
     return n ? [n + ' object' + (n > 1 ? 's extend' : ' extends') + ' beyond the canvas edge and will be clipped in the export.'] : [];
   }
+  /* Live-production destinations. OBS's default canvas is 1920×1080 and its Image source keeps PNG alpha.
+     StreamYard's published spec for overlays/backgrounds is 1280×720, JPG/PNG/GIF, under 20 MB; overlays need transparency. */
+  const TARGETS = {
+    obs: { label: 'OBS Studio — Image source (1920×1080 PNG)', w: 1920, h: 1080, format: 'png', alpha: 'keep', suffix: '_obs',
+      howto: 'In OBS: Sources → + → Image → pick this file. It fills a 1920×1080 canvas exactly; transparent areas show the sources below it.' },
+    'sy-overlay': { label: 'StreamYard — Overlay (1280×720 transparent PNG)', w: 1280, h: 720, format: 'png', alpha: 'keep', maxBytes: 20e6, needsAlpha: true, suffix: '_streamyard-overlay',
+      howto: 'In StreamYard: Brand → Overlays → + → upload this file, then click it in the studio to show it over the cameras.' },
+    'sy-background': { label: 'StreamYard — Background (1280×720 PNG)', w: 1280, h: 720, format: 'png', alpha: 'off', maxBytes: 20e6, suffix: '_streamyard-bg',
+      howto: 'In StreamYard: Brand → Backgrounds → + → upload this file. Cameras and screen shares sit on top of it.' }
+  };
   const E = NS.Export = {
+    TARGETS,
+    /* Export options for a destination: output fits the destination frame (exact for 16:9 canvases). */
+    targetOptions(project, id) {
+      const t = TARGETS[id]; if (!t) return null;
+      const W = project.canvas.w, H = project.canvas.h, scale = Math.min(t.w / W, t.h / H);
+      return { format: t.format, scale, transparent: t.alpha === 'keep' && !!project.canvas.bg.transparent, target: id };
+    },
+    /* Checks the verified file against the destination's requirements. */
+    targetWarnings(project, r, id) {
+      const t = TARGETS[id]; if (!t) return []; const w = [];
+      if (r.w !== t.w || r.h !== t.h) w.push('This design is ' + project.canvas.w + '×' + project.canvas.h + ', not 16:9, so the file is ' + r.w + '×' + r.h + ' instead of ' + t.w + '×' + t.h + '. ' + (id === 'obs' ? 'OBS will show it unscaled; resize it in the scene if needed.' : 'StreamYard stretches overlays and backgrounds to fill the frame, so it will look distorted. Use a 1920×1080 or 1280×720 canvas.'));
+      if (t.maxBytes && r.blob.size > t.maxBytes) w.push('File is ' + NS.ui.fmtBytes(r.blob.size) + '; StreamYard rejects files over 20 MB.');
+      if (t.needsAlpha && !r.info.hasAlpha) w.push('This file has no transparent pixels, so as an overlay it will cover the cameras. Use a transparent template (e.g. Broadcast → Lower third) or export as a StreamYard background instead.');
+      return w;
+    },
     sampleCount(project) { let n = 0; (function w(a) { (a || []).forEach(o => { if (o.sample) n++; w(o.objects); }); })(project.objects); return n; },
     async render(project, o) {
       o = Object.assign({ format: 'png', scale: 1, transparent: false, quality: 0.92 }, o);
@@ -54,7 +79,9 @@
       const info = await E.verify(blob, o.format, outW, outH);
       if (wantAlpha && !info.hasAlpha) warnings.push('Transparent PNG requested but no transparent pixels were found.');
       if (info.mismatch) warnings.push('Decoded size ' + info.w + '×' + info.h + ' does not match the expected ' + outW + '×' + outH + '.');
-      return { blob, w: info.w || outW, h: info.h || outH, format: o.format, warnings, info, ext: o.format === 'jpeg' ? 'jpg' : o.format };
+      const r = { blob, w: info.w || outW, h: info.h || outH, format: o.format, warnings, info, ext: o.format === 'jpeg' ? 'jpg' : o.format, target: o.target || null };
+      warnings.push(...E.targetWarnings(project, r, o.target));
+      return r;
     },
     /* Decode the produced file and check its real dimensions / transparency (not just what we asked for). */
     async verify(blob, format, w, h) {
@@ -64,9 +91,9 @@
       for (let i = 3; i < d.length; i += 4) if (d[i] < 250) clear++;
       const out = { w: bmp.width, h: bmp.height, hasAlpha: clear > 0, clearFraction: clear / (d.length / 4), bytes: blob.size, mismatch: bmp.width !== w || bmp.height !== h }; bmp.close && bmp.close(); return out;
     },
-    fileName(project, r, suffix) { return (project.name || 'graphic').replace(/[^\w\-]+/g, '_') + '_' + r.w + 'x' + r.h + (suffix || '') + '.' + r.ext; },
+    fileName(project, r, suffix) { return (project.name || 'graphic').replace(/[^\w\-]+/g, '_') + '_' + r.w + 'x' + r.h + (TARGETS[r.target] ? TARGETS[r.target].suffix : '') + (suffix || '') + '.' + r.ext; },
     download(blob, name) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); },
-    async record(project, r) { try { await NS.Store.put('exports', { id: NS.uid('exp'), projectId: project.id, projectName: project.name, format: r.format, w: r.w, h: r.h, bytes: r.blob.size, at: Date.now(), transparent: !!r.info.hasAlpha && r.format === 'png', warnings: r.warnings }); } catch (e) {} },
+    async record(project, r) { try { await NS.Store.put('exports', { id: NS.uid('exp'), projectId: project.id, projectName: project.name, format: r.format, w: r.w, h: r.h, bytes: r.blob.size, at: Date.now(), transparent: !!r.info.hasAlpha && r.format === 'png', target: r.target, warnings: r.warnings }); } catch (e) {} },
     /* Editable project file: project JSON + the image assets it references. */
     async projectFile(project) {
       const ids = new Set(); (function w(a) { (a || []).forEach(o => { if (o.assetId) ids.add(o.assetId); w(o.objects); }); })(project.objects);
