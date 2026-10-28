@@ -3,7 +3,7 @@
   const { h, toast } = NS.ui;
   const NAV = [
     ['dashboard', 'Dashboard'], ['studio', 'Graphics Studio'], ['map', 'Interactive Map Studio'], ['sep', 'Workspaces'],
-    ['weather', 'Weather Graphics'], ['alerts', 'NWS Alert Graphics'], ['news', 'Breaking News Graphics'], ['broadcast', 'Broadcast Graphics'], ['social', 'Social Media Graphics'], ['sep', 'Library'],
+    ['weather', 'Weather Graphics'], ['alerts', 'NWS Alert Graphics'], ['hazards', 'Week-Ahead Hazards'], ['news', 'Breaking News Graphics'], ['broadcast', 'Broadcast Graphics'], ['social', 'Social Media Graphics'], ['sep', 'Library'],
     ['templates', 'Template Library'], ['assets', 'Asset Library'], ['projects', 'Saved Projects'], ['sep', 'Settings'], ['brand', 'Brand Settings'], ['exports', 'Export Center'], ['sep', 'Tools'], ['ext:plate-builder.html', 'Plate Builder (counties)']
   ];
   const main = document.getElementById('main'), nav = document.getElementById('nav');
@@ -110,6 +110,7 @@
   }
   views.weather = () => gallery('Weather Graphics', 'Forecast panels, weather maps, severe weather and tropical templates. Sample content is flagged and must be replaced before publishing; live layers only appear when their source returns data.', ['weather', 'severe', 'tropical'], h('div', { class: 'hint', style: 'margin-bottom:10px' }, 'Controls for forecast/valid time, units, legend, attribution, title and accent colour are in each project\'s Fields tab; map layers and region are in Map Studio.'));
   views.alerts = () => NS.AlertsView();
+  views.hazards = () => NS.HazardsView();
   views.news = () => gallery('Breaking News Graphics', 'Full-screen headline, alert, location and chart graphics. Edit headlines and fields without rebuilding the design.', ['breaking', 'safety', 'general']);
   views.broadcast = () => gallery('Broadcast Graphics', 'Lower thirds, bugs, straps, cards and presenter overlays. Transparent templates export as true transparent PNG.', ['broadcast']);
   views.social = () => gallery('Social Media Graphics', 'Facebook, Instagram, YouTube, X and web formats. Use Canvas → "Create variant" inside a project to make another aspect ratio without touching the original.', ['social']);

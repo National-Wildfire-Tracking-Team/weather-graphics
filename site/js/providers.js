@@ -182,6 +182,127 @@
     }
   });
 
+  /* ---------- Week-ahead hazards ----------
+     Collects every official outlook polygon that carries a valid date and maps it onto the calendar days it covers:
+     SPC convective outlooks (Days 1-3 categorical, Days 4-8 probability), WPC Excessive Rainfall Outlook (Days 1-5),
+     WPC probability of 4+ in of snow (Days 1-3), the WPC Day 3-7 Hazards Outlook and the CPC Day 8-14 Hazards Outlook.
+     A day that no product reaches is reported as "no outlook", never filled in. */
+  const DAY = 86400000;
+  const isoDay = ms => new Date(ms).toISOString().slice(0, 10);
+  const localToday = () => { const d = new Date(); return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()); };
+  const spcTime = s => /^\d{12}$/.test(s || '') ? Date.UTC(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8), +s.slice(8, 10), +s.slice(10, 12)) : null;
+  const wpcTime = s => { const t = s ? Date.parse(String(s).replace(' ', 'T') + 'Z') : NaN; return isNaN(t) ? null : t; };
+  // 12Z-to-12Z products belong to the U.S. day they start on (shift back 6 h so a 01Z update still counts as the previous evening).
+  const convDay = start => isoDay(start - 6 * 3600000);
+  const SPC_CAT = { 2: [0, 'Thunderstorms', 'General thunder', 'THUNDERSTORMS'], 3: [1, 'Severe storms', '1/5 Marginal', '1/5 MARGINAL SEVERE'], 4: [2, 'Severe storms', '2/5 Slight', '2/5 SLIGHT SEVERE'],
+    5: [3, 'Severe storms', '3/5 Enhanced', '3/5 ENHANCED SEVERE'], 6: [4, 'Severe storms', '4/5 Moderate', '4/5 MODERATE SEVERE'], 8: [5, 'Severe storms', '5/5 High', '5/5 HIGH SEVERE'] };
+  const ERO_TXT = { 1: [1, '1/4 Marginal'], 2: [2, '2/4 Slight'], 3: [4, '3/4 Moderate'], 4: [5, '4/4 High'] };
+  const SNOW_TXT = { 1: [1, '10-39% chance of 4+ in', 'SNOW 4"+ 10-39%'], 2: [3, '40-69% chance of 4+ in', 'SNOW 4"+ 40-69%'], 3: [4, '70%+ chance of 4+ in', 'SNOW 4"+ 70%+'] };
+  // WPC/CPC hazards colors from the service renderer; "Critical Wildfire Risk" is black there, which vanishes on a dark basemap, so it is drawn orange.
+  const CPC_COLORS = { 'Frost/Freeze': '#C500FF', 'Hazardous Heat': '#A80000', 'Excessive Heat': '#A80000', 'Hazardous Cold': '#005CE6', 'High Winds': '#CDAA66', 'Significant Waves': '#FFD37F',
+    'Much Above Normal Temperatures': '#FF0000', 'Much Below Normal Temperatures': '#005CE6', 'Flooding Likely': '#DF73FF', 'Flooding Occurring or Imminent': '#9B30D9', 'Flooding Possible': '#E8BEFF',
+    'Freezing Rain': '#FF00C5', 'Heavy Ice': '#FF00C5', 'Heavy Precipitation': '#00E6A9', 'Heavy Rain': '#38A800', 'Heavy Snow': '#0084A8', 'Severe Weather': '#E69800',
+    'Critical Wildfire Risk': '#FF6A00', 'Severe Drought': '#A0522D', 'Rapid Onset Drought Risk': '#FFD37F' };
+  const CPC_LEVEL = { 'Flooding Possible': 1, 'Flooding Likely': 3, 'Flooding Occurring or Imminent': 4, 'Critical Wildfire Risk': 3 };
+  const HZ_SOURCES = [
+    { id: 'spc', name: 'SPC convective outlooks', short: 'SPC', range: 'Days 1-8', attribution: 'NOAA / NWS Storm Prediction Center',
+      layers: [[1, 1], [9, 2], [17, 3], [21, 4], [22, 5], [23, 6], [24, 7], [25, 8]].map(([l, d]) => ({ url: SPC + '/' + l, day: d, fields: 'dn,label,label2,stroke,fill,valid,expire,issue' })),
+      norm(p, L) {
+        const start = spcTime(p.valid); if (!p.fill || p.dn == null) return null;
+        let level, hazard, detail, legend;
+        if (L.day <= 3) { const c = SPC_CAT[p.dn]; if (!c) return null; [level, hazard, detail, legend] = c; }
+        else { const pct = Math.round(+p.dn) || parseInt(p.label2, 10) || 0; level = pct >= 30 ? 3 : 2; hazard = 'Severe storms'; detail = pct + '% chance'; legend = pct + '% SEVERE'; }
+        return { hazard, detail, legend, level, fill: p.fill, stroke: p.stroke || p.fill, start, end: spcTime(p.expire), issued: spcTime(p.issue) };
+      } },
+    { id: 'ero', name: 'WPC Excessive Rainfall Outlook', short: 'WPC ERO', range: 'Days 1-5', attribution: 'NOAA / NWS Weather Prediction Center',
+      layers: [0, 1, 2, 3, 4].map(l => ({ url: WPC + '/hazards/wpc_precip_hazards/MapServer/' + l, day: l + 1, fields: 'dn,outlook,start_time,end_time,issue_time' })),
+      norm(p) {
+        const c = ERO_TXT[p.dn], k = ERO_COLORS[p.dn]; if (!c) return null;
+        return { hazard: 'Flash flooding', detail: c[1], legend: c[1].toUpperCase() + ' FLOOD', level: c[0], fill: k[0], stroke: k[1], start: wpcTime(p.start_time), end: wpcTime(p.end_time), issued: wpcTime(p.issue_time) };
+      } },
+    { id: 'snow', name: 'WPC snowfall probability', short: 'WPC snow', range: 'Days 1-3', attribution: 'NOAA / NWS Weather Prediction Center',
+      layers: [[1, 1], [6, 2], [11, 3]].map(([l, d]) => ({ url: WPC + '/precip/wpc_prob_winter_precip/MapServer/' + l, day: d, fields: 'dn,outlook,start_time,end_time,issue_time' })),
+      norm(p) {
+        const c = SNOW_TXT[Math.round(p.dn)]; if (!c) return null;
+        return { hazard: 'Heavy snow', detail: c[1], legend: c[2], level: c[0], fill: SNOW_COLORS[Math.round(p.dn)], stroke: SNOW_COLORS[Math.round(p.dn)], start: wpcTime(p.start_time), end: wpcTime(p.end_time), issued: wpcTime(p.issue_time) };
+      } },
+    { id: 'wpc37', name: 'WPC Day 3-7 Hazards Outlook', short: 'WPC 3-7', range: 'Days 3-7', attribution: 'NOAA / NWS Weather Prediction Center', span: true,
+      layers: [1, 4, 7].map(l => ({ url: WPC + '/hazards/cpc_weather_hazards/MapServer/' + l, day: 3, last: 7, fields: 'label,start_date,end_date,idp_filedate' })),
+      norm: p => cpcNorm(p) },
+    { id: 'cpc814', name: 'CPC Day 8-14 Hazards Outlook', short: 'CPC 8-14', range: 'Days 8-14', attribution: 'NOAA / NWS Climate Prediction Center', span: true,
+      layers: [3, 6, 8].map(l => ({ url: WPC + '/hazards/cpc_weather_hazards/MapServer/' + l, day: 8, last: 14, fields: 'label,start_date,end_date,idp_filedate' })),
+      norm: p => cpcNorm(p) }
+  ];
+  function cpcNorm(p) {
+    if (!p.label || p.start_date == null) return null; const col = CPC_COLORS[p.label] || '#9AA7B8';
+    return { hazard: p.label, detail: '', legend: p.label.toUpperCase(), level: CPC_LEVEL[p.label] || 2, fill: col, stroke: col, start: +p.start_date, end: +p.end_date, issued: p.idp_filedate || null };
+  }
+  // Dates a normalized feature applies to. Hazards Outlook dates are 00Z calendar dates with an exclusive end.
+  function hzDates(src, n, L, today) {
+    if (src.span) { const out = []; for (let t = n.start; t < (n.end > n.start ? n.end : n.start + 1); t += DAY) out.push(isoDay(t)); return out; }
+    return [n.start ? convDay(n.start) : isoDay(today + (L.day - 1) * DAY)];
+  }
+  const HZ_DRAW = ['cpc814', 'wpc37', 'snow', 'ero', 'spc'];   // broad outlooks underneath, detailed short-range ones on top
+  const HZ = NS.Hazards = {
+    SOURCES: HZ_SOURCES, loaded: null, today: localToday, isoDay,
+    async load(force) {
+      if (!force && HZ.loaded && Date.now() - HZ.loaded.fetchedAt < 10 * MIN) return HZ.loaded;
+      const today = localToday(), feats = [], sources = [];
+      await Promise.all(HZ_SOURCES.map(async src => {
+        const r = { id: src.id, name: src.name, short: src.short, range: src.range, attribution: src.attribution, dates: new Set(), count: 0, issued: null, errors: [] };
+        await Promise.all(src.layers.map(async L => {
+          let list;
+          try {
+            const d = await fetchJSON(L.url + '/query?where=1%3D1&outFields=' + L.fields + '&outSR=4326&maxAllowableOffset=0.01&geometryPrecision=3&f=geojson', 45000);
+            list = d.features || [];
+          } catch (e) { r.errors.push(e.message); return; }
+          let timed = false;
+          list.forEach(f => {
+            const n = f.geometry && f.properties && src.norm(f.properties, L); if (!n) return;
+            const dates = hzDates(src, n, L, today); if (n.start) timed = true;
+            if (n.issued && (!r.issued || n.issued > r.issued)) r.issued = n.issued;
+            dates.forEach(x => r.dates.add(x)); r.count++;
+            feats.push({ type: 'Feature', geometry: f.geometry, properties: Object.assign(n, { src: src.id, srcName: src.short, day: src.span ? src.range : 'Day ' + L.day, dates, color: n.fill, uid: feats.length + 1 }) });
+          });
+          // Coverage even when a day's product is empty: the day it is valid for.
+          if (!timed && !src.span) r.dates.add(isoDay(today + (L.day - 1) * DAY));
+        }));
+        // Hazards Outlooks: the whole Day 3-7 / 8-14 window, counted from the product's issue date (they are issued on weekdays only).
+        if (src.span && (r.count || !r.errors.length)) { const L = src.layers[0], base = r.issued ? Date.parse(isoDay(r.issued) + 'T00:00:00Z') : today; for (let k = L.day; k <= L.last; k++) r.dates.add(isoDay(base + (k - 1) * DAY)); }
+        if (r.errors.length === src.layers.length) r.error = r.errors[0];
+        r.dates = [...r.dates].sort(); sources.push(r);
+      }));
+      sources.sort((a, b) => HZ_SOURCES.findIndex(s => s.id === a.id) - HZ_SOURCES.findIndex(s => s.id === b.id));
+      if (sources.every(s => s.error)) throw new Error('No outlook service answered (' + sources[0].error + ').');
+      feats.forEach(f => { delete f.properties.start; delete f.properties.end; });
+      return (HZ.loaded = { fetchedAt: Date.now(), features: feats, sources });
+    },
+    /* ISO dates [start, start + n) */
+    range(startIso, n) { const t = Date.parse(startIso + 'T00:00:00Z'); return Array.from({ length: n }, (_, i) => isoDay(t + i * DAY)); },
+    dayIndex(iso) { return Math.round((Date.parse(iso + 'T00:00:00Z') - localToday()) / DAY) + 1; },
+    matches(f, dates, o) {
+      o = o || {}; const p = f.properties;
+      return (!o.sources || o.sources.includes(p.src)) && (o.thunder || p.level > 0) && p.dates.some(d => dates.includes(d));
+    },
+    /* GeoJSON for the given days, drawn broad-to-detailed then low-to-high risk. */
+    build(dates, o) {
+      const L = HZ.loaded; if (!L) throw new Error('Hazard outlooks are not loaded.');
+      return FC(L.features.filter(f => HZ.matches(f, dates, o)).sort((a, b) => HZ_DRAW.indexOf(a.properties.src) - HZ_DRAW.indexOf(b.properties.src) || a.properties.level - b.properties.level)
+        .map(f => ({ type: 'Feature', geometry: f.geometry, properties: Object.assign({}, f.properties, { dates: f.properties.dates.join(',') }) })));
+    },
+    /* One day's overview: distinct hazards (highest risk first) and which products reach that day. */
+    summary(iso, o) {
+      const L = HZ.loaded, seen = new Map();
+      L.features.filter(f => HZ.matches(f, [iso], o)).forEach(f => {
+        const p = f.properties, k = p.src + '|' + p.hazard + '|' + p.detail;
+        if (!seen.has(k)) seen.set(k, { hazard: p.hazard, detail: p.detail, level: p.level, color: p.fill, src: p.src, srcName: p.srcName });
+      });
+      const items = [...seen.values()].sort((a, b) => b.level - a.level || a.hazard.localeCompare(b.hazard));
+      const covered = L.sources.filter(s => !s.error && (!o || !o.sources || o.sources.includes(s.id)) && s.dates.includes(iso)).map(s => s.short);
+      return { iso, day: HZ.dayIndex(iso), items, covered };
+    }
+  };
+
   window.NS.Providers = [
     nwsAlert('nws-tornado', 'Tornado warnings', 'Tornado Warning', '#F2453D'),
     nwsAlert('nws-svr', 'Severe thunderstorm warnings', 'Severe Thunderstorm Warning', '#F2B53D'),
@@ -197,6 +318,17 @@
         if (!f || !f.events || !f.events.length) throw new Error('No alert type selected. Create this graphic from NWS Alert Graphics.');
         const { alerts } = await NWS.loadActive();
         return NWS.build(NWS.filter(alerts, f), f, cfg.color || null);
+      }
+    },
+    {
+      id: 'hazards-outlook', group: 'Forecast', name: 'Week-ahead hazards (selected days)', mode: 'geojson', style: { color: '#F2B53D', kind: 'poly', perFeatureColor: true },
+      supplies: 'Official outlook polygons for chosen calendar days: SPC convective (Days 1-8), WPC Excessive Rainfall (Days 1-5), WPC snow probability (Days 1-3), WPC Day 3-7 and CPC Day 8-14 Hazards Outlooks.',
+      attribution: 'NOAA / NWS (SPC, WPC, CPC outlooks)', updateFreq: 'SPC/WPC several times daily; Hazards Outlooks weekdays ~17Z; refresh manually', staleAfter: 12 * 3600000,
+      limitations: 'Choose the days in Week-Ahead Hazards (the days are stored with the graphic). Days beyond Day 8 only have the broad CPC Day 8-14 outlook. Check issue times on the SPC/WPC/CPC sites before publishing. Snapshot is frozen when fetched; press Refresh to update.',
+      async fetch(cfg) {
+        if (!cfg || !cfg.dates || !cfg.dates.length) throw new Error('No days selected. Create this graphic from Week-Ahead Hazards.');
+        await NS.Hazards.load(true);
+        return NS.Hazards.build(cfg.dates, cfg);
       }
     },
     {
