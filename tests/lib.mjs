@@ -1,7 +1,10 @@
 import { chromium } from '/opt/node22/lib/node_modules/playwright/index.mjs';
+import { existsSync } from 'node:fs';
+// The pinned Chromium build moves between environments; fall back to the /opt/pw-browsers/chromium symlink, or set CHROME.
+const CHROME = process.env.CHROME || ['/opt/pw-browsers/chromium-1194/chrome-linux/chrome', '/opt/pw-browsers/chromium'].find(p => existsSync(p));
 export const BASE = process.env.BASE || 'http://localhost:8765/index.html';
 export async function launch(opts = {}) {
-  const b = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', args: ['--no-sandbox', '--use-gl=swiftshader', '--enable-webgl', '--ignore-gpu-blocklist', '--enable-unsafe-swiftshader'] });
+  const b = await chromium.launch({ executablePath: CHROME, args: ['--no-sandbox', '--use-gl=swiftshader', '--enable-webgl', '--ignore-gpu-blocklist', '--enable-unsafe-swiftshader'] });
   const ctx = await b.newContext({ viewport: { width: 1600, height: 950 }, deviceScaleFactor: opts.dpr || 1, acceptDownloads: true });
   const page = await ctx.newPage(); const errs = [];
   page.on('console', m => { if (m.type() === 'error' && !/favicon|404/.test(m.text())) errs.push(m.text()); }); page.on('pageerror', e => errs.push('PAGEERR ' + e.message));
