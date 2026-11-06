@@ -7,7 +7,7 @@
     ['templates', 'Template Library'], ['assets', 'Asset Library'], ['projects', 'Saved Projects'], ['sep', 'Settings'], ['brand', 'Brand Settings'], ['exports', 'Export Center'], ['sep', 'Tools'], ['ext:plate-builder.html', 'Plate Builder (counties)']
   ];
   // Top-level tabs. Every route not owned by another tab belongs to Graphics Studio (sidebar visible).
-  const TABS = [['studio-home', 'Graphics Studio', '#/dashboard'], ['headlines', 'WX Headlines', '#/headlines'], ['resources', 'Resources', '#/resources']];
+  const TABS = [['studio-home', 'Graphics Studio', '#/dashboard'], ['headlines', 'WX Headlines', '#/headlines'], ['reports', 'Storm Reports', '#/reports'], ['resources', 'Resources', '#/resources']];
   const tabOf = route => TABS.some(t => t[0] === route) ? route : 'studio-home';
   const main = document.getElementById('main'), nav = document.getElementById('nav'), tabs = document.getElementById('tabs'), appEl = document.getElementById('app');
   const App = NS.App = { editor: null };
@@ -183,6 +183,7 @@
     return root;
   };
   views.headlines = () => NS.HeadlinesView();
+  views.reports = () => NS.ReportsView();
   views.resources = () => NS.ResourcesView();
   views.exports = async () => {
     const root = h('div', {}, h('h1', {}, 'Export Center'), h('p', { class: 'sub' }, 'Render any saved project at full resolution without opening the editor, and review recent exports. Files are verified (decoded size and transparency) before download.'));
