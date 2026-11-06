@@ -132,3 +132,29 @@ dialog h3{margin:0 0 10px;font:600 15px var(--font-sans)}
 .srlist button:hover{background:var(--surface-hover)}
 .checker{background:conic-gradient(#2a3140 25%,#1c222c 0 50%,#2a3140 0 75%,#1c222c 0) 0 0/16px 16px}
 .mapboxgl-ctrl-attrib{font-size:11px}
+/* top-level section tabs */
+body{display:flex;flex-direction:column}
+#tabs{flex:none;height:40px;display:flex;align-items:stretch;gap:2px;padding:0 12px;background:var(--surface-panel);border-bottom:1px solid var(--border)}
+#tabs a{display:flex;align-items:center;padding:0 16px;color:var(--ink-muted);text-decoration:none;font:700 15px/1 var(--font-display);text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid transparent}
+#tabs a:hover{color:var(--ink);background:var(--surface-hover)}
+#tabs a.active{color:var(--ink);border-bottom-color:var(--accent)}
+#app{flex:1;min-height:0;height:auto}
+#app.nosidebar{grid-template-columns:1fr}
+#app.nosidebar #sidebar{display:none}
+/* WX Headlines */
+.hlgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;margin-bottom:8px}
+.hlcard{background:var(--surface-panel);border:1px solid var(--border);border-radius:var(--radius-md);padding:10px 12px}
+.hlcard ul,.hlrow ul{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.hlcard li{display:flex;align-items:center;gap:8px}
+.headlines .grow{flex:1;min-width:0}
+.headlines .sw{width:12px;height:12px;border-radius:2px;flex:none;border:1px solid var(--border-strong)}
+.hllist{display:flex;flex-direction:column;gap:4px}
+.hlrow{background:var(--surface-panel);border:1px solid var(--border);border-radius:var(--radius-md)}
+.hlrow summary{display:flex;align-items:center;gap:8px;padding:6px 10px;cursor:pointer;list-style:none}
+.hlrow summary::-webkit-details-marker{display:none}
+.hlrow[open] summary{border-bottom:1px solid var(--border)}
+.hlrow ul{padding:0 10px 10px}
+.hlrow li{border-bottom:1px solid var(--border);padding-bottom:6px}
+a.reslink{color:var(--ink);text-decoration:none}
+@media (max-width:700px){#tabs{overflow-x:auto;padding:0 4px}#tabs a{padding:0 10px;font-size:13px;white-space:nowrap}}
+a.btn{color:var(--ink);text-decoration:none;display:inline-block}

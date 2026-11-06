@@ -6,7 +6,10 @@
     ['weather', 'Weather Graphics'], ['alerts', 'NWS Alert Graphics'], ['hazards', 'Week-Ahead Hazards'], ['news', 'Breaking News Graphics'], ['broadcast', 'Broadcast Graphics'], ['social', 'Social Media Graphics'], ['sep', 'Library'],
     ['templates', 'Template Library'], ['assets', 'Asset Library'], ['projects', 'Saved Projects'], ['sep', 'Settings'], ['brand', 'Brand Settings'], ['exports', 'Export Center'], ['sep', 'Tools'], ['ext:plate-builder.html', 'Plate Builder (counties)']
   ];
-  const main = document.getElementById('main'), nav = document.getElementById('nav');
+  // Top-level tabs. Every route not owned by another tab belongs to Graphics Studio (sidebar visible).
+  const TABS = [['studio-home', 'Graphics Studio', '#/dashboard'], ['headlines', 'WX Headlines', '#/headlines'], ['resources', 'Resources', '#/resources']];
+  const tabOf = route => TABS.some(t => t[0] === route) ? route : 'studio-home';
+  const main = document.getElementById('main'), nav = document.getElementById('nav'), tabs = document.getElementById('tabs'), appEl = document.getElementById('app');
   const App = NS.App = { editor: null };
   NS.assetMeta = new Map();
   NS.assetsReady = Promise.resolve();
@@ -179,6 +182,8 @@
         await NS.Store.put('settings', nb); await NS.Store.put('settings', { id: 'map', token: tok.value.trim(), style: sty.value.trim() }); if (tok.value.trim() && !NS.config.token) NS.config.token = tok.value.trim(); document.getElementById('orgName').textContent = (nb.orgName || 'Newsroom').toUpperCase(); toast('Brand settings saved.', 'ok'); } catch (e) { toast('Could not save: ' + e.message, 'err'); } } }, 'Save brand settings')));
     return root;
   };
+  views.headlines = () => NS.HeadlinesView();
+  views.resources = () => NS.ResourcesView();
   views.exports = async () => {
     const root = h('div', {}, h('h1', {}, 'Export Center'), h('p', { class: 'sub' }, 'Render any saved project at full resolution without opening the editor, and review recent exports. Files are verified (decoded size and transparency) before download.'));
     const ps = (await NS.Store.all('projects').catch(() => [])).sort((a, b) => b.updated - a.updated);
@@ -198,6 +203,8 @@
     if (App.editor) { const ed = App.editor; const ok = await ed.closeGuard(); if (!ok) { location.hash = '#/edit/' + ed.project.id; return; } ed.destroy(); App.editor = null; }
     if (my !== seq) return;
     nav.querySelectorAll('a').forEach(a => a.classList.toggle('active', a.dataset.r === (route === 'edit' ? 'projects' : route)));
+    const tab = tabOf(route); appEl.classList.toggle('nosidebar', tab !== 'studio-home');
+    tabs.querySelectorAll('[role=tab]').forEach(a => { const on = a.dataset.tab === tab; a.classList.toggle('active', on); a.setAttribute('aria-selected', on); });
     main.className = 'view'; main.innerHTML = '';
     try {
       if (route === 'edit') {
@@ -213,6 +220,7 @@
   window.addEventListener('hashchange', render);
 
   async function boot() {
+    TABS.forEach(([id, l, href]) => tabs.append(h('a', { role: 'tab', href, 'data-tab': id, id: 'tab-' + id }, l)));
     NAV.forEach(([id, l]) => nav.append(id === 'sep' ? h('div', { class: 'navsep' }, l) : h('a', Object.assign({ href: id.startsWith('ext:') ? id.slice(4) : '#/' + id, 'data-r': id }, id.startsWith('ext:') ? { target: '_blank', rel: 'noopener' } : {}), l)));
     await NS.loadConfig(); NS.prepareFonts(); NS.assetsReady = loadAssets(); await NS.assetsReady;
     const b = await NS.getBrand(); document.getElementById('orgName').textContent = (b.orgName || 'Newsroom').toUpperCase(); NS.brand = b;
