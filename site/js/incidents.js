@@ -148,6 +148,23 @@
   const srcById = id => SOURCES.find(s => s.id === id);
   NS.Incidents = { SOURCES, NWS_EVAC_EVENTS, STATE_NAMES, IPAWS_EVAC_CODES };
 
+  /* Shared data cache: the tab view and incident pages (incidentpage.js) read the same snapshot. */
+  const cache = { data: {}, err: {}, at: 0, inflight: null };
+  function socialCfg() { const pref = loadPrefs(), cfg = (NS.config && NS.config.incidents) || {}; return { terms: pref.terms || cfg.socialTerms || DEFAULT_TERMS, tags: pref.tags || cfg.mastodonTags || DEFAULT_TAGS }; }
+  // Loads the given sources (default: all) into the cache, then rebuilds incident pages. Returns the incident pages created by this load.
+  async function loadAll(ids, c) {
+    if (cache.inflight && !ids) return cache.inflight;
+    const run = (async () => {
+      c = c || socialCfg();
+      await Promise.all(SOURCES.filter(s => !ids || ids.includes(s.id)).map(s => s.load(c).then(d => { cache.data[s.id] = d; cache.err[s.id] = ''; }, e => { cache.data[s.id] = null; cache.err[s.id] = e.message || String(e); })));
+      if (!ids) cache.at = Date.now();
+      return NS.IncidentPages ? NS.IncidentPages.update(cache.data) : [];
+    })();
+    if (!ids) { cache.inflight = run; run.finally(() => { cache.inflight = null; }); }
+    return run;
+  }
+  Object.assign(NS.Incidents, { cache, loadAll, srcById, evacVerb, evacTag, copy: t => copy(t), fmt: { ago, when: fmt, acres } });
+
   async function copy(text) { try { await navigator.clipboard.writeText(text); toast('Copied.'); } catch (e) { toast('Clipboard unavailable: ' + e.message, 'err'); } }
   function loadPrefs() { try { return JSON.parse(localStorage.getItem(LS)) || {}; } catch (e) { return {}; } }
   function savePrefs(p) { try { localStorage.setItem(LS, JSON.stringify(p)); } catch (e) {} }
@@ -157,26 +174,26 @@
     const pref = loadPrefs(), cfg = (NS.config && NS.config.incidents) || {};
     const st = { state: pref.state || '', hours: pref.hours || 24, minAcres: pref.minAcres || 0, sort: 'new', auto: !!pref.auto,
       terms: pref.terms || cfg.socialTerms || DEFAULT_TERMS, tags: pref.tags || cfg.mastodonTags || DEFAULT_TAGS,
-      data: {}, err: {}, at: {}, busy: false, seen: null, fresh: new Set(), showAll: false };
+      data: cache.data, err: cache.err, busy: false, seen: null, fresh: new Set(), showAll: false };
     const persist = () => savePrefs({ state: st.state, hours: st.hours, minAcres: st.minAcres, auto: st.auto, terms: st.terms, tags: st.tags });
 
     const root = h('div', { class: 'incidents' }, h('h1', {}, 'Incident Detection'),
       h('p', { class: 'sub' }, 'New wildfire starts, evacuation orders and social chatter from free public feeds. Verified agency sources are kept separate from unverified social posts. Confirm every detail with the incident agency before going on air.'));
-    const bar = h('div', { class: 'bar' }), srcs = h('div', { id: 'incSources', class: 'incsrc' }), feed = h('section', { id: 'incFeed' }), evac = h('section', { id: 'incEvac' }),
+    const bar = h('div', { class: 'bar' }), srcs = h('div', { id: 'incSources', class: 'incsrc' }), pages = h('section', { id: 'incPages' }), feed = h('section', { id: 'incFeed' }), evac = h('section', { id: 'incEvac' }),
       fires = h('section', { id: 'incFires' }), social = h('section', { id: 'incSocial' }), links = h('section', { id: 'incLinks' });
-    root.append(bar, srcs, feed, evac, fires, social, links);
+    root.append(bar, srcs, pages, feed, evac, fires, social, links);
 
     async function load() {
       if (st.busy) return; st.busy = true; drawBar(); drawSources();
-      const c = { terms: st.terms, tags: st.tags };
-      await Promise.all(SOURCES.map(s => s.load(c).then(d => { st.data[s.id] = d; st.err[s.id] = ''; st.at[s.id] = Date.now(); }, e => { st.data[s.id] = null; st.err[s.id] = e.message || String(e); })));
+      const first = !cache.at, created = await loadAll(null, { terms: st.terms, tags: st.tags });
+      if (!first && created.length) created.forEach(c => toast('New incident page: ' + c.name + ' (' + c.sources.length + ' sources)', 'ok', 8000));
       // Track what is new since the previous load in this session (first load marks nothing).
       const ids = new Set(SOURCES.filter(s => s.verified).flatMap(s => (st.data[s.id] || []).map(x => x.id)));
       st.fresh = st.seen ? new Set([...ids].filter(i => !st.seen.has(i))) : new Set();
       if (st.seen && st.fresh.size) toast(st.fresh.size + ' new verified item' + (st.fresh.size === 1 ? '' : 's') + ' since the last refresh.', 'ok');
       st.seen = ids; st.busy = false; draw();
     }
-    function draw() { drawBar(); drawSources(); drawFeed(); drawEvac(); drawFires(); drawSocial(); drawLinks(); }
+    function draw() { drawBar(); drawSources(); drawPages(); drawFeed(); drawEvac(); drawFires(); drawSocial(); drawLinks(); }
 
     const inState = (x) => !st.state || x.state === st.state || (x.states || []).includes(st.state);
     const sizeOk = x => !st.minAcres || (x.acres || 0) >= st.minAcres;
@@ -204,6 +221,22 @@
       }));
     }
 
+    /* Incidents reported by two or more sources get a page (incidentpage.js). */
+    const pageLink = id => { const p = NS.IncidentPages && NS.IncidentPages.pageFor(id); return p ? h('a', { class: 'btn sm', href: '#/incident/' + encodeURIComponent(p.key), title: 'Incident page' }, 'Page →') : null; };
+    function drawPages() {
+      if (!NS.IncidentPages) return;
+      const all = NS.IncidentPages.list().filter(p => !st.state || p.snap.state === st.state), live = all.filter(p => NS.IncidentPages.live.has(p.key)), old = all.filter(p => !NS.IncidentPages.live.has(p.key));
+      const card = p => { const c = NS.IncidentPages.live.get(p.key) || p.snap, w = c.fires.find(f => f.acres != null);
+        return h('a', { class: 'tile incpagecard', href: '#/incident/' + encodeURIComponent(p.key), 'data-key': p.key },
+          h('b', {}, c.name), h('span', { class: 'hint' }, [c.county && c.county + ' Co.', c.state].filter(Boolean).join(', ') + (w ? ' · ' + acres(w.acres) + ' (' + srcById(w.src).short + ')' : '')),
+          h('span', { class: 'row', style: 'flex-wrap:wrap;gap:4px' }, c.sources.map(s => h('span', { class: 'tag' + (s === 'social' ? ' warn' : '') }, s === 'social' ? 'Social' : srcById(s).short)),
+            c.evac.length ? h('span', { class: 'tag err' }, 'Evacuations') : null)); };
+      pages.replaceChildren(h('h2', {}, 'Incident pages', h('span', { class: 'hint' }, ' · reported by 2+ sources')));
+      if (!live.length && !old.length) { pages.append(h('p', { class: 'hint' }, cache.at ? 'No incident is reported by more than one source' + (st.state ? ' in ' + st.state : '') + ' right now.' : 'Pages appear here when two or more sources report the same incident.')); return; }
+      if (live.length) pages.append(h('div', { class: 'incpages' }, live.map(card)));
+      if (old.length) pages.append(h('details', { id: 'incOldPages' }, h('summary', { class: 'hint' }, 'Earlier pages no longer in the feeds (' + old.length + ')'), h('div', { class: 'incpages' }, old.map(card))));
+    }
+
     /* Unified, verified detection feed: things that started, were issued or were updated inside the window. */
     function drawFeed() {
       const since = Date.now() - st.hours * HOUR, items = [];
@@ -221,7 +254,7 @@
         return h('li', { class: (it.evac ? 'evac' : 'fire') + (isNew ? ' fresh' : ''), 'data-id': it.x.id },
           h('span', { class: 'when', title: fmt(it.t) }, ago(it.t)), h('span', { class: 'tag ' + (it.evac ? evacTag(it.x) : 'warn') }, it.verb),
           h('span', { class: 'grow' }, it.line), isNew ? h('span', { class: 'tag ok' }, 'NEW') : null, h('span', { class: 'tag' }, s.short),
-          it.x.url ? h('a', { class: 'btn sm', href: it.x.url, target: '_blank', rel: 'noopener' }, 'Source ↗') : null,
+          pageLink(it.x.id), it.x.url ? h('a', { class: 'btn sm', href: it.x.url, target: '_blank', rel: 'noopener' }, 'Source ↗') : null,
           h('button', { class: 'btn sm', title: 'Copy headline', onclick: () => copy(it.verb + ': ' + it.line + ' (' + s.short + ', ' + fmt(it.t) + ')') }, 'Copy'));
       })), items.length > 40 && !st.showAll ? h('button', { class: 'btn sm', onclick: () => { st.showAll = true; drawFeed(); } }, 'Show all ' + items.length) : null);
     }
@@ -263,7 +296,7 @@
         h('tbody', {}, list.slice(0, MAXROWS).map(x => h('tr', { 'data-id': x.id, class: st.fresh.has(x.id) ? 'fresh' : '' },
           h('td', {}, h('b', {}, x.name), x.ref ? h('div', { class: 'hint' }, x.ref) : null), h('td', {}, [x.county, x.state].filter(Boolean).join(', ') || '—', x.lat != null ? h('div', { class: 'hint' }, (+x.lat).toFixed(3) + ', ' + (+x.lon).toFixed(3)) : null),
           h('td', {}, acres(x.acres)), h('td', {}, x.contained == null ? '—' : x.contained + '%'), h('td', { title: fmt(x.start) }, ago(x.start)), h('td', { title: fmt(x.updated) }, ago(x.updated)),
-          h('td', {}, h('span', { class: 'tag' }, srcById(x.src).short)), h('td', {}, x.url ? h('a', { class: 'btn sm', href: x.url, target: '_blank', rel: 'noopener' }, '↗') : null))))));
+          h('td', {}, h('span', { class: 'tag' }, srcById(x.src).short)), h('td', { class: 'row', style: 'gap:4px' }, pageLink(x.id), x.url ? h('a', { class: 'btn sm', href: x.url, target: '_blank', rel: 'noopener' }, '↗') : null))))));
       const iw = (st.data.inciweb || []).filter(inState).sort((a, b) => (b.updated || 0) - (a.updated || 0));
       if (st.data.inciweb) fires.append(h('h3', {}, 'InciWeb pages'), iw.length ? h('ul', { class: 'incfeed', id: 'incInciweb' }, iw.slice(0, 30).map(x => h('li', { 'data-id': x.id },
         h('span', { class: 'when', title: fmt(x.updated) }, ago(x.updated)), h('span', { class: 'grow' }, x.name), x.type ? h('span', { class: 'tag' }, x.type) : null, x.state ? h('span', { class: 'tag' }, x.state) : null,
@@ -297,10 +330,9 @@
       })));
     }
     async function reloadSocial() {
-      const c = { terms: st.terms, tags: st.tags };
       st.data.bluesky = st.data.mastodon = null; st.err.bluesky = st.err.mastodon = ''; drawSocial(); drawSources();
-      await Promise.all(SOURCES.filter(s => s.kind === 'social').map(s => s.load(c).then(d => { st.data[s.id] = d; st.err[s.id] = ''; }, e => { st.data[s.id] = null; st.err[s.id] = e.message; })));
-      drawSocial(); drawSources();
+      await loadAll(['bluesky', 'mastodon'], { terms: st.terms, tags: st.tags });
+      drawSocial(); drawSources(); drawPages();
     }
 
     function drawLinks() {
@@ -311,7 +343,7 @@
     }
 
     const timer = setInterval(() => { if (!root.isConnected) { clearInterval(timer); return; } if (st.auto && !st.busy && !document.hidden) load(); }, AUTO_MS);
-    draw(); load();
+    draw(); if (cache.at && Date.now() - cache.at < AUTO_MS) { st.seen = new Set(SOURCES.filter(s => s.verified).flatMap(s => (cache.data[s.id] || []).map(x => x.id))); } else load();
     return root;
   };
 })();

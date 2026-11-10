@@ -170,6 +170,12 @@ ul.incfeed .when{flex:none;width:76px;color:var(--ink-muted);font:12px var(--fon
 ul.incsocial li{background:var(--surface-panel);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 10px}
 .posttext{margin-top:4px;white-space:pre-wrap;overflow-wrap:anywhere}
 .incdetail{padding:6px 10px 10px;display:flex;flex-direction:column;gap:6px}
+.incpages{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px;margin-bottom:8px}
+a.incpagecard{display:flex;flex-direction:column;gap:4px;padding:10px 12px;color:var(--ink);text-decoration:none;background:var(--surface-panel);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:var(--radius-md)}
+a.incpagecard:hover{background:var(--surface-hover)}
+#incOldPages summary{cursor:pointer;margin:4px 0 8px}
+.incmapgl{height:380px;border:1px solid var(--border);border-radius:var(--radius-md);overflow:hidden}
+.incpage h1{margin-top:12px}
 pre.inctext{white-space:pre-wrap;margin:0;font:12px/1.45 var(--font-mono);color:var(--ink-muted);max-height:260px;overflow:auto}
 table.inctable td{vertical-align:top}
 @media (max-width:700px){ul.incfeed li{flex-wrap:wrap}table.inctable{display:block;overflow-x:auto}}
