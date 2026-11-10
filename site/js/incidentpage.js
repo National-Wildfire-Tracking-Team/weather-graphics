@@ -161,6 +161,7 @@
           h('button', { class: 'btn primary', id: 'ipGraphic', disabled: !st.per, title: st.per ? 'Create an editable map graphic of the NIFC perimeter' : 'Needs a mapped NIFC perimeter', onclick: () => makeGraphic(c) }, 'Make map graphic'),
           iw.map(x => h('a', { class: 'btn sm', href: x.url, target: '_blank', rel: 'noopener' }, 'InciWeb ↗')),
           fires.filter(f => f.url).map(f => h('a', { class: 'btn sm', href: f.url, target: '_blank', rel: 'noopener' }, srcName(f.src) + ' ↗')),
+          h('a', { class: 'btn sm', id: 'ipFbSearch', href: 'https://www.facebook.com/search/posts?q=' + encodeURIComponent(c.name + (c.county ? ' ' + c.county : '')), target: '_blank', rel: 'noopener', title: 'Search public Facebook posts (opens Facebook; results are unverified)' }, 'Search Facebook ↗'),
           h('span', { class: 'grow' }), h('button', { class: 'btn sm', id: 'ipDelete', title: 'Remove this page from this browser', onclick: async () => { if (await NS.ui.confirm('Remove incident page', 'Remove the page for ' + c.name + ' from this browser? It is re-created if two sources report it again.', 'Remove', true)) { P.remove(entry.key); location.hash = '#/incidents'; } } }, 'Remove page')),
         h('h2', {}, 'Source reports'),
         h('table', { class: 't inctable', id: 'ipReports' }, h('thead', {}, h('tr', {}, ['Source', 'Reported as', 'Size', 'Contained', 'Discovered', 'Updated', 'Location'].map(x => h('th', {}, x)))),

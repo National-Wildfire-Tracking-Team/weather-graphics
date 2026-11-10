@@ -18,6 +18,18 @@
   const evacTag = x => LIFTED_TEXT.test(x.status) ? 'ok' : /order|immediate|shelter/i.test(x.status) ? 'err' : 'warn';
   const DEFAULT_TERMS = ['wildfire', 'evacuation order', 'brush fire', 'evacuation warning'];
   const DEFAULT_TAGS = ['wildfire', 'evacuation', 'calfire'];
+  // Facebook has no free API for reading posts (Graph API page content needs Meta app review and a secret token, which cannot ship in
+  // a public browser app). Agency Pages are shown with Facebook's official Page Plugin instead: display-only, loaded on request,
+  // and never used for detection or incident pages. Edit the list in the tab, or set incidents.facebookPages in config.json.
+  const DEFAULT_FB = ['https://www.facebook.com/CALFIRE', 'https://www.facebook.com/CalOES', 'https://www.facebook.com/USForestService', 'https://www.facebook.com/FEMA'];
+  // Accepts "CALFIRE", "facebook.com/CALFIRE" or a full URL; anything that is not a facebook.com Page path is rejected (never embed arbitrary sites).
+  function fbUrl(v) {
+    v = String(v || '').trim(); if (!v) return null;
+    if (/^[A-Za-z0-9.\-]+$/.test(v)) return 'https://www.facebook.com/' + v;
+    const m = v.match(/^(?:https?:\/\/)?(?:www\.|m\.)?facebook\.com\/([A-Za-z0-9.\-_/]+?)\/?(?:[?#].*)?$/i);
+    return m && !/^(plugins|sharer|login|dialog)\b/i.test(m[1]) ? 'https://www.facebook.com/' + m[1] : null;
+  }
+  const fbEmbed = u => 'https://www.facebook.com/plugins/page.php?' + new URLSearchParams({ href: u, tabs: 'timeline', width: '340', height: '640', small_header: 'true', adapt_container_width: 'true', hide_cover: 'true', show_facepile: 'false' });
 
   async function get(url, ms, kind) {
     const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), ms || 25000);
@@ -174,14 +186,15 @@
     const pref = loadPrefs(), cfg = (NS.config && NS.config.incidents) || {};
     const st = { state: pref.state || '', hours: pref.hours || 24, minAcres: pref.minAcres || 0, sort: 'new', auto: !!pref.auto,
       terms: pref.terms || cfg.socialTerms || DEFAULT_TERMS, tags: pref.tags || cfg.mastodonTags || DEFAULT_TAGS,
+      fb: (pref.fb || cfg.facebookPages || DEFAULT_FB).map(fbUrl).filter(Boolean), fbOn: false,
       data: cache.data, err: cache.err, busy: false, seen: null, fresh: new Set(), showAll: false };
-    const persist = () => savePrefs({ state: st.state, hours: st.hours, minAcres: st.minAcres, auto: st.auto, terms: st.terms, tags: st.tags });
+    const persist = () => savePrefs({ state: st.state, hours: st.hours, minAcres: st.minAcres, auto: st.auto, terms: st.terms, tags: st.tags, fb: st.fb });
 
     const root = h('div', { class: 'incidents' }, h('h1', {}, 'Incident Detection'),
       h('p', { class: 'sub' }, 'New wildfire starts, evacuation orders and social chatter from free public feeds. Verified agency sources are kept separate from unverified social posts. Confirm every detail with the incident agency before going on air.'));
     const bar = h('div', { class: 'bar' }), srcs = h('div', { id: 'incSources', class: 'incsrc' }), pages = h('section', { id: 'incPages' }), feed = h('section', { id: 'incFeed' }), evac = h('section', { id: 'incEvac' }),
-      fires = h('section', { id: 'incFires' }), social = h('section', { id: 'incSocial' }), links = h('section', { id: 'incLinks' });
-    root.append(bar, srcs, pages, feed, evac, fires, social, links);
+      fires = h('section', { id: 'incFires' }), social = h('section', { id: 'incSocial' }), fb = h('section', { id: 'incFacebook' }), links = h('section', { id: 'incLinks' });
+    root.append(bar, srcs, pages, feed, evac, fires, social, fb, links);
 
     async function load() {
       if (st.busy) return; st.busy = true; drawBar(); drawSources();
@@ -193,7 +206,7 @@
       if (st.seen && st.fresh.size) toast(st.fresh.size + ' new verified item' + (st.fresh.size === 1 ? '' : 's') + ' since the last refresh.', 'ok');
       st.seen = ids; st.busy = false; draw();
     }
-    function draw() { drawBar(); drawSources(); drawPages(); drawFeed(); drawEvac(); drawFires(); drawSocial(); drawLinks(); }
+    function draw() { drawBar(); drawSources(); drawPages(); drawFeed(); drawEvac(); drawFires(); drawSocial(); drawFacebook(); drawLinks(); }
 
     const inState = (x) => !st.state || x.state === st.state || (x.states || []).includes(st.state);
     const sizeOk = x => !st.minAcres || (x.acres || 0) >= st.minAcres;
@@ -333,6 +346,25 @@
       st.data.bluesky = st.data.mastodon = null; st.err.bluesky = st.err.mastodon = ''; drawSocial(); drawSources();
       await loadAll(['bluesky', 'mastodon'], { terms: st.terms, tags: st.tags });
       drawSocial(); drawSources(); drawPages();
+    }
+
+    function drawFacebook() {
+      const inp = h('input', { type: 'text', id: 'incFbPages', value: st.fb.map(u => u.replace('https://www.facebook.com/', '')).join(', '), style: 'width:420px', 'aria-label': 'Facebook Pages (names or URLs, comma-separated)' });
+      const save = () => {
+        const raw = inp.value.split(',').map(x => x.trim()).filter(Boolean), ok = raw.map(fbUrl), bad = raw.filter((x, i) => !ok[i]);
+        if (bad.length) { toast('Not a Facebook Page: ' + bad.join(', '), 'err'); return; }
+        st.fb = [...new Set(ok)].slice(0, 8); persist(); drawFacebook();
+      };
+      inp.addEventListener('keydown', e => { if (e.key === 'Enter') save(); });
+      fb.replaceChildren(h('h2', {}, 'Facebook agency pages ', h('span', { class: 'tag warn' }, 'DISPLAY ONLY')),
+        h('p', { class: 'hint' }, 'Live timelines from official agency Facebook Pages via Facebook\'s Page Plugin. Facebook offers no free API to read posts, so these are for reading only: they are not searched, matched to incidents or counted as a source. Loading them lets Facebook see this visit.'),
+        h('div', { class: 'bar' }, h('label', { class: 'row' }, 'Pages ', inp), h('button', { class: 'btn', id: 'incFbSave', onclick: save }, 'Save'),
+          h('button', { class: 'btn' + (st.fbOn ? '' : ' primary'), id: 'incFbToggle', onclick: () => { st.fbOn = !st.fbOn; drawFacebook(); } }, st.fbOn ? 'Hide Facebook pages' : 'Show Facebook pages (' + st.fb.length + ')')));
+      if (!st.fbOn) return;
+      if (!st.fb.length) { fb.append(h('div', { class: 'empty' }, 'No Facebook Pages listed.')); return; }
+      fb.append(h('div', { class: 'incfb' }, st.fb.map(u => h('div', { class: 'incfbcol', 'data-page': u },
+        h('div', { class: 'row' }, h('b', { class: 'grow' }, u.replace('https://www.facebook.com/', '')), h('a', { class: 'btn sm', href: u, target: '_blank', rel: 'noopener' }, 'Open ↗')),
+        h('iframe', { src: fbEmbed(u), title: 'Facebook Page ' + u, width: '340', height: '640', loading: 'lazy', style: 'border:0;overflow:hidden;background:#fff;border-radius:var(--radius-sm)', allow: 'encrypted-media', referrerpolicy: 'strict-origin-when-cross-origin' })))));
     }
 
     function drawLinks() {

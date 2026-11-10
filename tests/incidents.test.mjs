@@ -86,6 +86,17 @@ await page.fill('#incTerms', 'brush fire'); await page.fill('#incTags', '#firewx
 await page.click('#incSocialApply'); await page.waitForTimeout(800);
 check('custom terms and tags are searched', reqs.some(u => /searchPosts\?q=brush\+fire/.test(u)) && reqs.some(u => /tag\/firewx/.test(u)), reqs);
 check('prefs persist', await page.evaluate(() => JSON.parse(localStorage.getItem('nsgs.incidents.v1')).tags[0] === 'firewx'));
+await page.route('https://www.facebook.com/**', r => r.fulfill({ body: '<html><body>fb stub</body></html>', contentType: 'text/html' }));
+check('Facebook embeds are not loaded until asked', (await page.$$('#incFacebook iframe')).length === 0 && /Show Facebook pages \(4\)/.test(await page.textContent('#incFbToggle')));
+await page.click('#incFbToggle');
+const fbSrc = await page.$$eval('#incFacebook iframe', e => e.map(x => x.src));
+check('Facebook Page Plugin embeds for each listed page', fbSrc.length === 4 && fbSrc.every(u => u.startsWith('https://www.facebook.com/plugins/page.php?href=https%3A%2F%2Fwww.facebook.com%2F')), fbSrc);
+await page.fill('#incFbPages', 'CALFIRE, https://evil.example/page'); await page.click('#incFbSave');
+check('non-Facebook URLs are rejected', (await page.$$('#incFacebook iframe')).length === 4);
+await page.fill('#incFbPages', 'https://m.facebook.com/CALFIRELNU/, facebook.com/CalOES'); await page.click('#incFbSave');
+const fbPages = await page.$$eval('#incFacebook .incfbcol', e => e.map(x => x.dataset.page));
+check('Facebook Page names and URLs normalized and saved', fbPages.join() === 'https://www.facebook.com/CALFIRELNU,https://www.facebook.com/CalOES' && JSON.parse(await page.evaluate(() => localStorage.getItem('nsgs.incidents.v1'))).fb.length === 2, fbPages);
+check('Facebook is never counted as a detection source', !(await page.$('#incSources [data-src*="facebook"]')));
 const bad = errs.filter(e => !/Failed to load resource|net::|HTTP \d+|CORS/.test(e));
 console.log('page errors:', bad);
 check('no unexpected page errors', bad.length === 0);

@@ -67,6 +67,7 @@ check('perimeter found', /Perimeter: NIFC \/ WFIGS, 298 ac mapped/.test(await pa
 await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
 await page.click('#ipCopy'); const clip = await page.evaluate(() => navigator.clipboard.readText());
 check('copy summary attributes each figure', /BAILEY FIRE \(Plumas County, CA\)/.test(clip) && /NIFC: 250 ac, 10% contained/.test(clip) && /CAL FIRE: 310 ac, 5% contained/.test(clip) && /Evacuation order: .*\(NWS/.test(clip), clip);
+check('page links to a Facebook post search for the incident', /search\/posts\?q=Bailey%20Fire%20Plumas/.test(await page.getAttribute('#ipFbSearch', 'href')));
 check('make graphic enabled with a perimeter', await page.isEnabled('#ipGraphic'));
 await page.click('#ipGraphic'); await page.waitForFunction(() => location.hash.startsWith('#/edit/'), null, { timeout: 30000 }).catch(() => {});
 check('make graphic opens an editable project', await page.evaluate(() => location.hash.startsWith('#/edit/')));
