@@ -7,7 +7,7 @@
     ['templates', 'Template Library'], ['assets', 'Asset Library'], ['projects', 'Saved Projects'], ['sep', 'Settings'], ['brand', 'Brand Settings'], ['exports', 'Export Center'], ['sep', 'Tools'], ['ext:plate-builder.html', 'Plate Builder (counties)']
   ];
   // Top-level tabs. Every route not owned by another tab belongs to Graphics Studio (sidebar visible).
-  const TABS = [['studio-home', 'Graphics Studio', '#/dashboard'], ['headlines', 'WX Headlines', '#/headlines'], ['resources', 'Resources', '#/resources']];
+  const TABS = [['studio-home', 'Graphics Studio', '#/dashboard'], ['headlines', 'WX Headlines', '#/headlines'], ['incidents', 'Incident Detection', '#/incidents']];
   const tabOf = route => TABS.some(t => t[0] === route) ? route : 'studio-home';
   const main = document.getElementById('main'), nav = document.getElementById('nav'), tabs = document.getElementById('tabs'), appEl = document.getElementById('app');
   const App = NS.App = { editor: null };
@@ -183,7 +183,8 @@
     return root;
   };
   views.headlines = () => NS.HeadlinesView();
-  views.resources = () => NS.ResourcesView();
+  views.incidents = () => NS.IncidentsView();
+  views.resources = async () => { location.replace('#/incidents'); return h('div'); }; // old bookmark
   views.exports = async () => {
     const root = h('div', {}, h('h1', {}, 'Export Center'), h('p', { class: 'sub' }, 'Render any saved project at full resolution without opening the editor, and review recent exports. Files are verified (decoded size and transparency) before download.'));
     const ps = (await NS.Store.all('projects').catch(() => [])).sort((a, b) => b.updated - a.updated);
