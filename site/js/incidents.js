@@ -1,5 +1,6 @@
 /* Incident Detection tab: a live watch desk for new wildfires, evacuations and social chatter, built only from free public feeds.
-   Verified sources: NIFC WFIGS incident locations, CAL FIRE incidents, InciWeb, NWS evacuation/civil alerts, Cal OES evacuation zones.
+   Verified sources: NIFC WFIGS incident locations, CAL FIRE incidents, InciWeb, NWS evacuation/civil alerts,
+   FEMA IPAWS state/local alerts (the WEA messages PBS WARN relays, via the OpenFEMA archive), Cal OES evacuation zones.
    Unverified signals: Bluesky post search and Mastodon hashtag timelines (no keys needed). Social posts are never merged into the
    verified feed; they are shown separately, labeled unverified, and only cross-referenced to incident names.
    Nothing is invented: a failed source shows its error, an empty source says so. Sources live in NS.Incidents.SOURCES. */
@@ -8,6 +9,13 @@
   const HOUR = 3600000, MAXROWS = 100, AUTO_MS = 5 * 60000, LS = 'nsgs.incidents.v1';
   const NWS_EVAC_EVENTS = ['Evacuation Immediate', 'Fire Warning', 'Shelter In Place Warning', 'Civil Emergency Message', 'Civil Danger Warning', 'Local Area Emergency', 'Law Enforcement Warning', 'Hazardous Materials Warning'];
   const STATE_NAMES = { Alabama: 'AL', Alaska: 'AK', Arizona: 'AZ', Arkansas: 'AR', California: 'CA', Colorado: 'CO', Connecticut: 'CT', Delaware: 'DE', 'District of Columbia': 'DC', Florida: 'FL', Georgia: 'GA', Hawaii: 'HI', Idaho: 'ID', Illinois: 'IL', Indiana: 'IN', Iowa: 'IA', Kansas: 'KS', Kentucky: 'KY', Louisiana: 'LA', Maine: 'ME', Maryland: 'MD', Massachusetts: 'MA', Michigan: 'MI', Minnesota: 'MN', Mississippi: 'MS', Missouri: 'MO', Montana: 'MT', Nebraska: 'NE', Nevada: 'NV', 'New Hampshire': 'NH', 'New Jersey': 'NJ', 'New Mexico': 'NM', 'New York': 'NY', 'North Carolina': 'NC', 'North Dakota': 'ND', Ohio: 'OH', Oklahoma: 'OK', Oregon: 'OR', Pennsylvania: 'PA', 'Rhode Island': 'RI', 'South Carolina': 'SC', 'South Dakota': 'SD', Tennessee: 'TN', Texas: 'TX', Utah: 'UT', Vermont: 'VT', Virginia: 'VA', Washington: 'WA', 'West Virginia': 'WV', Wisconsin: 'WI', Wyoming: 'WY', 'Puerto Rico': 'PR' };
+  const FIPS = { '01': 'AL', '02': 'AK', '04': 'AZ', '05': 'AR', '06': 'CA', '08': 'CO', '09': 'CT', '10': 'DE', '11': 'DC', '12': 'FL', '13': 'GA', '15': 'HI', '16': 'ID', '17': 'IL', '18': 'IN', '19': 'IA', '20': 'KS', '21': 'KY', '22': 'LA', '23': 'ME', '24': 'MD', '25': 'MA', '26': 'MI', '27': 'MN', '28': 'MS', '29': 'MO', '30': 'MT', '31': 'NE', '32': 'NV', '33': 'NH', '34': 'NJ', '35': 'NM', '36': 'NY', '37': 'NC', '38': 'ND', '39': 'OH', '40': 'OK', '41': 'OR', '42': 'PA', '44': 'RI', '45': 'SC', '46': 'SD', '47': 'TN', '48': 'TX', '49': 'UT', '50': 'VT', '51': 'VA', '53': 'WA', '54': 'WV', '55': 'WI', '56': 'WY', '60': 'AS', '66': 'GU', '69': 'MP', '72': 'PR', '78': 'VI' };
+  // IPAWS (the system PBS WARN relays to phones as Wireless Emergency Alerts): which messages count as evacuations.
+  const IPAWS_EVAC_CODES = ['EVI', 'SPW', 'FRW'], IPAWS_TEST_CODES = ['RWT', 'RMT', 'DMO', 'NPT', 'NMN', 'ADR'];
+  const EVAC_TEXT = /evacuat|shelter[- ]in[- ]place|leave (the area )?(now|immediately)|evacuaci[oó]n|evacuar|refugio en el lugar/i;
+  const LIFTED_TEXT = /\b(lifted|all clear|rescinded|cancell?ed|may return|allowed to return|repopulat)/i;
+  const evacVerb = x => LIFTED_TEXT.test(x.status) ? 'Evacuation lifted' : /order|immediate/i.test(x.status) ? 'Evacuation order' : /warning|prepare|ready/i.test(x.status) && /evac/i.test(x.status) ? 'Evacuation warning' : x.status;
+  const evacTag = x => LIFTED_TEXT.test(x.status) ? 'ok' : /order|immediate|shelter/i.test(x.status) ? 'err' : 'warn';
   const DEFAULT_TERMS = ['wildfire', 'evacuation order', 'brush fire', 'evacuation warning'];
   const DEFAULT_TAGS = ['wildfire', 'evacuation', 'calfire'];
 
@@ -81,11 +89,37 @@
             updated: ms(p.sent), expires: ms(p.expires), sender: p.senderName, text: [p.description, p.instruction].filter(Boolean).join('\n\n') }; })
           .filter(a => NWS_EVAC_EVENTS.includes(a.status));
       } },
+    { id: 'ipaws', kind: 'evac', name: 'FEMA IPAWS alerts (WEA · PBS WARN)', short: 'IPAWS', home: 'https://www.fema.gov/openfema-data-page/ipaws-archived-alerts-v1', verified: true,
+      about: 'Wireless Emergency Alerts and EAS messages from state and local alerting authorities via FEMA IPAWS (the alerts PBS WARN relays to phones). Read from the OpenFEMA archive, which runs several hours to about a day behind real time.',
+      async load() {
+        const since = new Date(Date.now() - 96 * HOUR).toISOString();
+        const q = '$top=1000&$orderby=sent%20desc&$select=id,sender,sent,status,msgType,info&$filter=' + encodeURIComponent("sent ge '" + since + "' and status eq 'Actual'");
+        const d = await get('https://www.fema.gov/api/open/v1/IpawsArchivedAlerts?' + q, 45000);
+        const rows = d.IpawsArchivedAlerts || [], newest = rows.reduce((m, r) => Math.max(m, ms(r.sent) || 0), 0), out = [];
+        rows.forEach(r => {
+          const infos = r.info || [], i = infos.find(x => /^en/i.test(x.language || '')) || infos[0];
+          if (!i || /nws|noaa/i.test((r.sender || '') + (i.senderName || ''))) return; // NWS-issued alerts come from api.weather.gov above
+          const codes = (i.eventCode || []).map(c => c.value), par = n => ((i.parameter || []).find(p => p.name === n) || {}).value || '';
+          if (codes.some(c => IPAWS_TEST_CODES.includes(c))) return;
+          const wea = par('CMAMtext'), long = par('CMAMlongtext'), body = [i.description, i.instruction].filter(Boolean).join('\n\n');
+          const all = [i.event, i.headline, wea, long, body].join(' ');
+          if (!codes.some(c => IPAWS_EVAC_CODES.includes(c)) && !EVAC_TEXT.test(all)) return;
+          const lifted = r.msgType === 'Cancel' || LIFTED_TEXT.test([wea, i.headline, long].join(' '));
+          const status = lifted ? 'Evacuation lifted' : codes.includes('EVI') || /evacuation order|evacuate (now|immediately)|leave (the area )?now|mandatory evac/i.test(all) ? 'Evacuation order'
+            : codes.includes('SPW') || /shelter[- ]in[- ]place/i.test(all) ? 'Shelter in place' : codes.includes('FRW') ? 'Fire Warning' : /evacuation warning|prepare to evac|voluntary evac/i.test(all) ? 'Evacuation warning' : i.event || 'Evacuation notice';
+          const areas = i.area || [], fips = areas.flatMap(a => (a.geocode || []).filter(g => g.name === 'SAME').map(g => String(g.value).padStart(6, '0')));
+          out.push({ src: 'ipaws', id: 'ipaws:' + r.id, name: status, status, headline: wea || i.headline || i.event, area: areas.map(a => a.areaDesc).filter(a => a && a !== 'AffectedArea').join('; ') || fips.join(', '),
+            states: [...new Set(fips.map(f => FIPS[f.slice(1, 3)]).filter(Boolean))], updated: ms(r.sent), expires: ms(i.expires), sender: i.senderName || r.sender, wea: !!wea,
+            text: [long && long !== wea ? long : '', body].filter(Boolean).join('\n\n'), url: i.web || null });
+        });
+        out.lagHours = newest ? Math.max(0, Math.round((Date.now() - newest) / HOUR)) : null;
+        return out;
+      } },
     { id: 'caloes', kind: 'evac', name: 'Cal OES evacuation zones', short: 'Cal OES', home: 'https://data.ca.gov/dataset/california-evacuation-aggregation-layer', verified: true,
       about: 'California Active Evacuation Zones (aggregated county Genasys/Zonehaven zones), refreshed about every 10 minutes.',
       async load() {
         const q = new URLSearchParams({ where: 'STATUS IS NOT NULL', outFields: 'COUNTY,CITY,ZONE_NAME,ZONE_ID,STATUS,NOTES,PUBLIC_INFO,EDIT_DATE', returnGeometry: 'false', resultRecordCount: '4000', f: 'json' });
-        const d = await get(CALOES + '?' + q, 30000);
+        const d = await get(CALOES + '?' + q, 45000);
         if (d.error) throw new Error('Cal OES: ' + (d.error.message || 'query failed'));
         const groups = new Map();
         (d.features || []).forEach(f => { const a = f.attributes || {}, county = (a.COUNTY || 'Unknown').replace(/\b\w+/g, w => w[0] + w.slice(1).toLowerCase()), key = county + '|' + a.STATUS + '|' + (a.NOTES || '');
@@ -112,7 +146,7 @@
       } }
   ];
   const srcById = id => SOURCES.find(s => s.id === id);
-  NS.Incidents = { SOURCES, NWS_EVAC_EVENTS, STATE_NAMES };
+  NS.Incidents = { SOURCES, NWS_EVAC_EVENTS, STATE_NAMES, IPAWS_EVAC_CODES };
 
   async function copy(text) { try { await navigator.clipboard.writeText(text); toast('Copied.'); } catch (e) { toast('Clipboard unavailable: ' + e.message, 'err'); } }
   function loadPrefs() { try { return JSON.parse(localStorage.getItem(LS)) || {}; } catch (e) { return {}; } }
@@ -147,7 +181,7 @@
     const inState = (x) => !st.state || x.state === st.state || (x.states || []).includes(st.state);
     const sizeOk = x => !st.minAcres || (x.acres || 0) >= st.minAcres;
     const allFires = () => ['wfigs', 'calfire'].flatMap(id => st.data[id] || []);
-    const allEvac = () => ['nws-evac', 'caloes'].flatMap(id => st.data[id] || []);
+    const EVAC_SRCS = ['nws-evac', 'ipaws', 'caloes'], allEvac = () => EVAC_SRCS.flatMap(id => st.data[id] || []);
 
     function drawBar() {
       const states = [...new Set(SOURCES.filter(s => s.verified).flatMap(s => (st.data[s.id] || []).flatMap(x => x.states || [x.state])).filter(s => s && s.length === 2))].sort();
@@ -164,7 +198,7 @@
     function drawSources() {
       srcs.replaceChildren(...SOURCES.map(s => {
         const d = st.data[s.id], e = st.err[s.id];
-        const status = e ? 'error' : d ? d.length + (s.kind === 'social' ? ' posts' : s.id === 'caloes' ? ' zone groups' : ' items') : st.busy ? 'loading…' : 'not loaded';
+        const status = e ? 'error' : d ? d.length + (s.kind === 'social' ? ' posts' : s.id === 'caloes' ? ' zone groups' : ' items') + (d.lagHours != null ? ' · ' + d.lagHours + ' h behind' : '') : st.busy ? 'loading…' : 'not loaded';
         return h('div', { class: 'incsrcitem' + (e ? ' err' : ''), 'data-src': s.id, title: e || s.about },
           h('b', {}, s.short), h('span', { class: 'tag' + (e ? ' err' : '') }, status), s.verified ? null : h('span', { class: 'tag warn' }, 'unverified'));
       }));
@@ -175,17 +209,17 @@
       const since = Date.now() - st.hours * HOUR, items = [];
       allFires().filter(x => inState(x) && sizeOk(x) && x.start && x.start >= since).forEach(x => items.push({ t: x.start, x, verb: 'New fire', line: fireName(x.name) + ' · ' + [x.county && x.county + ' Co.', x.state].filter(Boolean).join(', ') + (x.acres != null ? ' · ' + acres(x.acres) : '') + (x.contained != null ? ' · ' + x.contained + '% contained' : '') }));
       (st.data.inciweb || []).filter(x => inState(x) && x.updated && x.updated >= since).forEach(x => items.push({ t: x.updated, x, verb: 'InciWeb update', line: x.name + (x.type ? ' · ' + x.type : '') + (x.state ? ' · ' + x.state : '') }));
-      allEvac().filter(x => inState(x) && x.updated && x.updated >= since).forEach(x => items.push({ t: x.updated, x, verb: /order|immediate/i.test(x.status) ? 'Evacuation order' : /warning/i.test(x.status) ? 'Evacuation warning' : x.status, line: x.headline, evac: true }));
+      allEvac().filter(x => inState(x) && x.updated && x.updated >= since).forEach(x => items.push({ t: x.updated, x, verb: evacVerb(x), line: x.headline, evac: true }));
       items.sort((a, b) => b.t - a.t);
       feed.replaceChildren(h('h2', {}, 'Detection feed', h('span', { class: 'hint' }, ' · verified sources, last ' + (st.hours === 1 ? 'hour' : st.hours + ' hours'))));
       const loaded = SOURCES.some(s => s.verified && st.data[s.id]);
-      if (!loaded) { feed.append(h('p', { class: 'hint' }, st.busy ? 'Contacting NIFC, CAL FIRE, InciWeb, NWS and Cal OES…' : 'No verified source could be loaded. See the source status above.')); return; }
+      if (!loaded) { feed.append(h('p', { class: 'hint' }, st.busy ? 'Contacting NIFC, CAL FIRE, InciWeb, NWS, FEMA IPAWS and Cal OES…' : 'No verified source could be loaded. See the source status above.')); return; }
       if (!items.length) { feed.append(h('div', { class: 'empty' }, 'Nothing new' + (st.state ? ' in ' + st.state : '') + ' in this window from the sources that loaded.')); return; }
       const shown = st.showAll ? items : items.slice(0, 40);
       feed.append(h('ul', { class: 'incfeed' }, shown.map(it => {
         const s = srcById(it.x.src), isNew = st.fresh.has(it.x.id);
         return h('li', { class: (it.evac ? 'evac' : 'fire') + (isNew ? ' fresh' : ''), 'data-id': it.x.id },
-          h('span', { class: 'when', title: fmt(it.t) }, ago(it.t)), h('span', { class: 'tag ' + (it.evac ? 'err' : 'warn') }, it.verb),
+          h('span', { class: 'when', title: fmt(it.t) }, ago(it.t)), h('span', { class: 'tag ' + (it.evac ? evacTag(it.x) : 'warn') }, it.verb),
           h('span', { class: 'grow' }, it.line), isNew ? h('span', { class: 'tag ok' }, 'NEW') : null, h('span', { class: 'tag' }, s.short),
           it.x.url ? h('a', { class: 'btn sm', href: it.x.url, target: '_blank', rel: 'noopener' }, 'Source ↗') : null,
           h('button', { class: 'btn sm', title: 'Copy headline', onclick: () => copy(it.verb + ': ' + it.line + ' (' + s.short + ', ' + fmt(it.t) + ')') }, 'Copy'));
@@ -194,22 +228,26 @@
 
     function drawEvac() {
       evac.replaceChildren(h('h2', {}, 'Evacuations'));
-      const errs = ['nws-evac', 'caloes'].filter(id => st.err[id]).map(id => h('div', { class: 'tag err', style: 'white-space:normal', 'data-src': id }, srcById(id).name + ': ' + st.err[id]));
+      const errs = EVAC_SRCS.filter(id => st.err[id]).map(id => h('div', { class: 'tag err', style: 'white-space:normal', 'data-src': id }, srcById(id).name + ': ' + st.err[id]));
       evac.append(...errs);
-      if (!st.data['nws-evac'] && !st.data.caloes) { if (!errs.length) evac.append(h('p', { class: 'hint' }, 'Contacting api.weather.gov and Cal OES…')); return; }
-      const list = allEvac().filter(inState).sort((a, b) => (/order|immediate/i.test(b.status) - /order|immediate/i.test(a.status)) || (b.updated || 0) - (a.updated || 0));
+      if (EVAC_SRCS.every(id => !st.data[id])) { if (errs.length < EVAC_SRCS.length) evac.append(h('p', { class: 'hint' }, 'Contacting api.weather.gov, FEMA IPAWS and Cal OES…')); return; }
+      const lag = st.data.ipaws && st.data.ipaws.lagHours;
+      if (lag != null) evac.append(h('p', { class: 'hint', id: 'incIpawsLag' }, 'IPAWS / WEA (PBS WARN) messages come from FEMA\'s archive, whose newest message is ' + lag + ' h old. Brand-new phone alerts may not appear yet.'));
+      const rank = x => evacTag(x) === 'err' ? 0 : evacTag(x) === 'warn' ? 1 : 2;
+      const list = allEvac().filter(inState).sort((a, b) => rank(a) - rank(b) || (b.updated || 0) - (a.updated || 0));
       if (!list.length) { evac.append(h('div', { class: 'empty' }, 'No active evacuation alerts or zones' + (st.state ? ' in ' + st.state : '') + ' from the sources that loaded.')); }
       else evac.append(h('div', { class: 'hllist' }, list.map(x => {
         const s = srcById(x.src), old = x.updated && Date.now() - x.updated > 7 * 24 * HOUR;
         return h('details', { class: 'hlrow', 'data-id': x.id },
-          h('summary', {}, h('span', { class: 'tag ' + (/order|immediate/i.test(x.status) ? 'err' : 'warn') }, x.status), h('b', { class: 'grow' }, x.headline),
+          h('summary', {}, h('span', { class: 'tag ' + evacTag(x) }, x.status), x.expires && x.expires < Date.now() ? h('span', { class: 'tag', title: 'Expired ' + fmt(x.expires) }, 'expired') : null, x.wea ? h('span', { class: 'tag', title: 'Sent to phones as a Wireless Emergency Alert' }, 'WEA') : null, h('b', { class: 'grow' }, x.headline),
             old ? h('span', { class: 'tag warn', title: 'Last edited ' + fmt(x.updated) + '. Zone may not have been cleared in the aggregate layer; confirm with the county.' }, 'last edited ' + ago(x.updated)) : h('span', { class: 'hint' }, ago(x.updated)),
             h('span', { class: 'tag' }, s.short), h('button', { class: 'btn sm', onclick: e => { e.preventDefault(); copy(x.headline + ' (' + s.short + ')'); } }, 'Copy')),
           h('div', { class: 'incdetail' }, h('div', { class: 'hint' }, x.area + (x.sender ? ' · ' + x.sender : '') + (x.expires ? ' · until ' + fmt(x.expires) : '')),
             x.zones ? h('div', {}, 'Zones: ' + x.zones.slice(0, 40).join(', ') + (x.zones.length > 40 ? ' …+' + (x.zones.length - 40) : '')) : null,
+            x.url ? h('a', { class: 'btn sm', href: x.url, target: '_blank', rel: 'noopener', style: 'align-self:flex-start' }, 'Issuer page ↗') : null,
             x.text || x.info ? h('pre', { class: 'inctext' }, (x.text || x.info).slice(0, 2000)) : null));
       })));
-      evac.append(h('p', { class: 'hint' }, 'Sources: NWS alerts (' + NWS_EVAC_EVENTS.join(', ') + ') and Cal OES California Active Evacuation Zones. Many counties publish evacuations only through their own sites or Genasys Protect; absence here does not mean no evacuations.'));
+      evac.append(h('p', { class: 'hint' }, 'Sources: NWS alerts (' + NWS_EVAC_EVENTS.join(', ') + '), FEMA IPAWS state/local alerts (the Wireless Emergency Alerts PBS WARN carries; evacuation, shelter-in-place and fire codes, or evacuation wording) and Cal OES California Active Evacuation Zones. Many counties publish evacuations only through their own sites or Genasys Protect; absence here does not mean no evacuations.'));
     }
 
     function drawFires() {
@@ -267,7 +305,7 @@
 
     function drawLinks() {
       links.replaceChildren(h('h2', {}, 'Official sources'), h('div', { class: 'row', style: 'flex-wrap:wrap' },
-        [...SOURCES.filter(s => s.verified).map(s => [s.name, s.home]), ['NIFC National Fire News', 'https://www.nifc.gov/fire-information/nfn'], ['Genasys Protect (evacuation zones)', 'https://protect.genasys.com/'], ['SPC Fire Weather Outlooks', 'https://www.spc.noaa.gov/products/fire_wx/'], ['NASA FIRMS hotspots', 'https://firms.modaps.eosdis.nasa.gov/usfs/map/']]
+        [...SOURCES.filter(s => s.verified).map(s => [s.name, s.home]), ['NIFC National Fire News', 'https://www.nifc.gov/fire-information/nfn'], ['PBS WARN', 'https://www.pbs.org/about/about-pbs/warn/'], ['Genasys Protect (evacuation zones)', 'https://protect.genasys.com/'], ['SPC Fire Weather Outlooks', 'https://www.spc.noaa.gov/products/fire_wx/'], ['NASA FIRMS hotspots', 'https://firms.modaps.eosdis.nasa.gov/usfs/map/']]
           .map(([n, u]) => h('a', { class: 'btn sm', href: u, target: '_blank', rel: 'noopener' }, n + ' ↗'))),
         h('p', { class: 'hint' }, 'Wildfire perimeters can be added to a graphic from the Interactive Map Studio (Incidents → Wildfire perimeters).'));
     }

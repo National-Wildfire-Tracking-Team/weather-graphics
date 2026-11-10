@@ -11,6 +11,19 @@ const NWS = { type: 'FeatureCollection', features: [
 const CALOES = { features: [
   { attributes: { COUNTY: 'TULARE', ZONE_ID: 'US-CA-XTU-PVL-E044', STATUS: 'Evacuation Order', NOTES: 'Flooding', EDIT_DATE: now - 400 * 24 * H } },
   { attributes: { COUNTY: 'TULARE', ZONE_ID: 'US-CA-XTU-PVL-E036', STATUS: 'Evacuation Order', NOTES: 'Flooding', EDIT_DATE: now - 400 * 24 * H } }] };
+const I = (id, sent, sender, codes, extra, msgType) => ({ id, sender, sent: new Date(sent).toISOString(), status: 'Actual', msgType: msgType || 'Alert', info: [Object.assign({ language: 'en-US', senderName: sender, event: 'Local Area Emergency',
+  eventCode: codes.map(value => ({ name: 'SAME', value })), area: [{ areaDesc: 'Rio Grande County, CO', geocode: [{ name: 'SAME', value: '008105' }] }], parameter: [] }, extra)] });
+const wea = t => [{ name: 'CMAMtext', value: t }];
+const IPAWS = { IpawsArchivedAlerts: [
+  I('i1', now - 2 * H, 'Rio_Grande_County_OEM', ['EVI'], { event: 'Evacuation Immediate', parameter: wea('Rio Grande Co: EVACUATE NOW Beaver Mtn Estates due to wildfire. Leave via CR 15.'), description: 'Go to the shelter at Del Norte High School.', web: 'https://example.gov/evac' }),
+  I('i2', now - 3 * H, 'Rio_Grande_County_OEM', ['LAE'], { parameter: wea('Evacuation lifted for Willow Park. Residents may return.') }),
+  I('i3', now - 3 * H, 'GDOT', ['LAE'], { parameter: wea('I-285 closed from exits 2 to 5.') }),
+  I('i4', now - 3 * H, 'County_EMA', ['RWT'], { event: 'Required Weekly Test', parameter: wea('Test of evacuation alerting') }),
+  I('i5', now - 3 * H, 'w-nws.webmaster@noaa.gov', ['EVI'], { event: 'Evacuation Immediate', parameter: wea('NWS relay duplicate') }),
+  I('i6', now - 5 * H, 'Bexar_OEM', ['SPW'], { event: 'Shelter in Place Warning', parameter: wea('Shelter in place now: chemical fire near Loop 410.'), area: [{ areaDesc: 'AffectedArea', geocode: [{ name: 'SAME', value: '048029' }] }] })
+] };
+// A Spanish twin in the same record: the English info block must win.
+IPAWS.IpawsArchivedAlerts[5].info.unshift({ language: 'es-US', event: 'Advertencia de Lugar de Refugio', eventCode: [{ name: 'SAME', value: 'SPW' }], parameter: wea('Refugio en el lugar'), area: [] });
 const RSS = `<?xml version="1.0"?><rss version="2.0"><channel><item><title>Foot Creek Fire</title><link>http://inciweb.wildfire.gov/incident-information/wybhf-foot-creek</link>
 <description>The type of incident is Wildfire and involves the following unit(s) Bighorn NF. --- State: Wyoming --- Coordinates</description><pubDate>${new Date(now - 4 * H).toUTCString()}</pubDate></item></channel></rss>`;
 const BSKY = { posts: [{ uri: 'at://did:plc:abc/app.bsky.feed.post/3xyz', author: { handle: 'ktvz.bsky.social', displayName: 'KTVZ News' }, record: { text: 'Crews responding to the Bailey Fire near Quincy, evacuation orders issued', createdAt: new Date(now - 40 * 60000).toISOString() } }] };
@@ -21,6 +34,7 @@ const { b, page, errs } = await launch();
 await page.route('**/WFIGS_Incident_Locations_Current/**', r => json(r, WFIGS));
 await page.route('**/CA_EVACUATIONS_CalOESHosted_view/**', r => json(r, CALOES));
 await page.route('https://api.weather.gov/alerts/active**', r => json(r, NWS));
+await page.route('https://www.fema.gov/api/open/v1/IpawsArchivedAlerts**', r => json(r, IPAWS));
 await page.route('https://inciweb.wildfire.gov/incidents/rss.xml', r => r.fulfill({ body: RSS, contentType: 'application/rss+xml', headers: { 'access-control-allow-origin': '*' } }));
 await page.route('https://api.bsky.app/xrpc/**', r => json(r, BSKY));
 await page.route('https://mastodon.social/api/v1/timelines/tag/**', r => json(r, MAST));
@@ -31,14 +45,22 @@ await page.evaluate(() => localStorage.removeItem('nsgs.incidents.v1'));
 await page.click('#tab-incidents');
 await page.waitForSelector('#incRefresh'); await page.waitForFunction(() => !document.getElementById('incRefresh').disabled, null, { timeout: 30000 });
 const src = await page.$$eval('#incSources .incsrcitem', e => Object.fromEntries(e.map(x => [x.dataset.src, x.textContent])));
-check('all seven sources reported', Object.keys(src).length === 7, src);
+check('all eight sources reported', Object.keys(src).length === 8, src);
+check('IPAWS chip shows archive lag', /3 items · 2 h behind/.test(src.ipaws), src.ipaws);
 check('failed CAL FIRE shows an error, not data', /error/.test(src.calfire) && /proxy\/calfire/.test(await page.textContent('#incFires')));
 check('social sources are labeled unverified', /unverified/.test(src.bluesky) && /unverified/.test(src.mastodon));
 const feed = await page.$$eval('#incFeed li', e => e.map(x => x.textContent));
-check('feed has new fires, InciWeb update and evacuation in the 24 h window', feed.length === 4, feed);
+check('feed has new fires, InciWeb update, NWS + IPAWS evacuations in the 24 h window', feed.length === 7, feed);
 check('feed is newest first', /Prairie/.test(feed[0]), feed[0]);
 check('old fire start is not in the feed', !feed.some(t => /New fire.*Foot Creek/.test(t)));
 check('evacuation alert is in the feed', feed.some(t => /Evacuation order.*Bailey Fire area/i.test(t)));
+check('IPAWS evacuation order in feed', feed.some(t => /Evacuation order.*EVACUATE NOW Beaver Mtn/.test(t)));
+check('IPAWS lifted message labeled lifted', feed.some(t => /Evacuation lifted.*Willow Park/.test(t)));
+check('IPAWS shelter-in-place uses the English message', feed.some(t => /Shelter in place.*chemical fire/.test(t)) && !feed.some(t => /Refugio/.test(t)));
+const evacText = await page.textContent('#incEvac');
+check('IPAWS road closures, tests and NWS duplicates filtered out', !/I-285|Test of evacuation|NWS relay duplicate/.test(evacText));
+check('IPAWS lag note shown', /newest message is 2 h old/.test(evacText));
+check('IPAWS items marked WEA', (await page.$$('#incEvac details[data-id^="ipaws"] .tag[title*="Wireless"]')).length === 3);
 check('non-evacuation NWS events filtered out', !/Not an evacuation/.test(await page.textContent('#incEvac')));
 check('stale Cal OES zone group flagged', /2 zones in Tulare County \(Flooding\)/.test(await page.textContent('#incEvac')) && /last edited/.test(await page.textContent('#incEvac')));
 await page.locator('#incEvac details[data-id^="nws"] summary').click();
@@ -50,6 +72,9 @@ check('InciWeb item parsed with state', /Foot Creek Fire/.test(await page.textCo
 await page.selectOption('#incState', 'CA');
 check('state filter narrows fires', (await page.$$('#incFires tbody tr')).length === 1);
 check('state filter narrows feed', (await page.$$eval('#incFeed li', e => e.length)) === 2);
+await page.selectOption('#incState', 'TX');
+check('IPAWS states come from SAME codes', /chemical fire/.test(await page.textContent('#incEvac')) && !/Beaver Mtn/.test(await page.textContent('#incEvac')));
+await page.selectOption('#incState', 'CA');
 await page.selectOption('#incSize', '1000');
 check('size filter empties the table', /No incidents match/.test(await page.textContent('#incFires')));
 await page.selectOption('#incSize', '0'); await page.selectOption('#incState', '');
