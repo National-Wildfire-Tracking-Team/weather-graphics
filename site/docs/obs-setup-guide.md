@@ -2,7 +2,9 @@
 
 This guide covers Phase 1 of NWTT livestream production. Each broadcaster runs **OBS Studio** on their own computer, loads graphics exported from **NWTT Graphics Studio** as **Image sources**, and streams to **Restream**, which sends the broadcast on to **YouTube** and **X**.
 
-Graphics are static PNG files. Nothing in Graphics Studio streams, publishes or connects to OBS or Restream: you export a file, and OBS shows it. New broadcaster? Start with [Broadcaster Onboarding](broadcaster-onboarding.md).
+In the Phase 1 workflow, graphics are static PNG files: you export a file, and OBS shows it. Nothing in Graphics Studio streams or connects to OBS or Restream. New broadcaster? Start with [Broadcaster Onboarding](broadcaster-onboarding.md).
+
+**Phase 2:** when the NWTT shared cloud is set up, a producer can also push graphics to OBS remotely through one Browser Source per computer. See [Live Graphics in OBS (Browser Source)](live-browser-source.md). The PNG workflow below stays the fallback.
 
 > Never put stream keys, passwords or Restream logins in a graphic, a project file, a shared folder or a chat. This guide never needs one.
 

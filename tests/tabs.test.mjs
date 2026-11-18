@@ -9,7 +9,7 @@ const ALERTS = { type: 'FeatureCollection', features: [
 const { b, page, errs } = await launch();
 await page.route('https://api.weather.gov/alerts/active**', r => r.fulfill({ json: ALERTS, headers: { 'access-control-allow-origin': '*' } }));
 console.log('Section tabs');
-check('three tabs in order', (await page.$$eval('#tabs [role=tab]', e => e.map(x => x.textContent))).join('|') === 'Graphics Studio|WX Headlines|Incident Detection');
+check('four tabs in order', (await page.$$eval('#tabs [role=tab]', e => e.map(x => x.textContent))).join('|') === 'Graphics Studio|WX Headlines|Incident Detection|Live Broadcast Control');
 check('Graphics Studio tab active on the dashboard, sidebar visible', await page.evaluate(() => document.querySelector('#tab-studio-home').classList.contains('active') && getComputedStyle(document.getElementById('sidebar')).display !== 'none'));
 await page.click('#tab-headlines'); await page.waitForSelector('#hlAlerts .hlrow', { timeout: 20000 });
 check('WX Headlines tab active and sidebar hidden', await page.evaluate(() => document.querySelector('#tab-headlines').getAttribute('aria-selected') === 'true' && getComputedStyle(document.getElementById('sidebar')).display === 'none'));

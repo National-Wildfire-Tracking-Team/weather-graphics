@@ -3,11 +3,11 @@
   const { h, toast } = NS.ui;
   const NAV = [
     ['dashboard', 'Dashboard'], ['studio', 'Graphics Studio'], ['map', 'Interactive Map Studio'], ['sep', 'Workspaces'],
-    ['weather', 'Weather Graphics'], ['alerts', 'NWS Alert Graphics'], ['hazards', 'Week-Ahead Hazards'], ['news', 'Breaking News Graphics'], ['broadcast', 'Broadcast Graphics'], ['social', 'Social Media Graphics'], ['sep', 'Live production'], ['obs', 'OBS Setup Guide'], ['sep', 'Library'],
-    ['templates', 'Template Library'], ['assets', 'Asset Library'], ['projects', 'Saved Projects'], ['sep', 'Settings'], ['brand', 'Brand Settings'], ['exports', 'Export Center'], ['sep', 'Tools'], ['ext:plate-builder.html', 'Plate Builder (counties)']
+    ['weather', 'Weather Graphics'], ['alerts', 'NWS Alert Graphics'], ['hazards', 'Week-Ahead Hazards'], ['news', 'Breaking News Graphics'], ['broadcast', 'Broadcast Graphics'], ['social', 'Social Media Graphics'], ['sep', 'Live production'], ['obs', 'OBS Setup Guide'], ['live', 'Live Broadcast Control'], ['sep', 'Library'],
+    ['templates', 'Template Library'], ['assets', 'Asset Library'], ['projects', 'Saved Projects'], ['shared', 'Shared Projects (cloud)'], ['sep', 'Settings'], ['brand', 'Brand Settings'], ['exports', 'Export Center'], ['team', 'Team and permissions'], ['sep', 'Tools'], ['ext:plate-builder.html', 'Plate Builder (counties)']
   ];
   // Top-level tabs. Every route not owned by another tab belongs to Graphics Studio (sidebar visible).
-  const TABS = [['studio-home', 'Graphics Studio', '#/dashboard'], ['headlines', 'WX Headlines', '#/headlines'], ['incidents', 'Incident Detection', '#/incidents']];
+  const TABS = [['studio-home', 'Graphics Studio', '#/dashboard'], ['headlines', 'WX Headlines', '#/headlines'], ['incidents', 'Incident Detection', '#/incidents'], ['live', 'Live Broadcast Control', '#/live']];
   const TAB_OF = { incident: 'incidents' };   // sub-routes that belong to a top tab
   const tabOf = route => TAB_OF[route] || (TABS.some(t => t[0] === route) ? route : 'studio-home');
   const main = document.getElementById('main'), nav = document.getElementById('nav'), tabs = document.getElementById('tabs'), appEl = document.getElementById('app');
@@ -35,7 +35,7 @@
     const brand = await NS.getBrand(); let p;
     const t = NS.Templates.list.find(x => x.id === id);
     if (t) p = await NS.Templates.instantiate(t, brand);
-    else { const ut = await NS.Store.get('templates', id); if (!ut) { toast('Template not found.', 'err'); return; } p = NS.blankProject(ut.w, ut.h, ut.name, ut.category); Object.assign(p, JSON.parse(JSON.stringify(ut.data)), { templateId: ut.id, name: ut.name.replace(/ template$/i, '') }); p.id = NS.uid('prj'); (function w(a) { a.forEach(o => { o.id = NS.uid('o'); w(o.objects || []); }); })(p.objects); }
+    else { const ut = await NS.Store.get('templates', id) || NS.CloudProjects.templates.find(x => x.id === id); if (!ut) { toast('Template not found.', 'err'); return; } if (ut.cloud) await NS.CloudProjects.pullAssets(ut.data.assetRefs); p = NS.blankProject(ut.w, ut.h, ut.name, ut.category); Object.assign(p, JSON.parse(JSON.stringify(ut.data)), { templateId: ut.id, name: ut.name.replace(/ template$/i, '') }); p.id = NS.uid('prj'); (function w(a) { a.forEach(o => { o.id = NS.uid('o'); w(o.objects || []); }); })(p.objects); }
     fixLogos(p); bump('tpl:' + id); await App.createProject(p);
   };
   App.newBlank = async function (w, hh, name, bg) {
@@ -71,11 +71,12 @@
   };
 
   function projectCard(p) {
-    const card = h('div', { class: 'tile' }, h('a', { href: '#/edit/' + p.id, style: 'display:block;text-decoration:none;color:inherit' }, h('div', { class: 'thumb', style: p.thumb ? 'background-image:url(' + p.thumb + ')' : '' }, p.thumb ? '' : 'No preview'), h('div', { class: 'meta' }, h('b', {}, p.name), h('span', {}, catName(p.category) + ' · ' + p.canvas.w + '×' + p.canvas.h), h('span', {}, 'Edited ' + NS.ui.fmtDate(p.updated)))));
+    const card = h('div', { class: 'tile' }, h('a', { href: '#/edit/' + p.id, style: 'display:block;text-decoration:none;color:inherit' }, h('div', { class: 'thumb', style: p.thumb ? 'background-image:url(' + p.thumb + ')' : '' }, p.thumb ? '' : 'No preview'), h('div', { class: 'meta' }, h('b', {}, p.name), h('span', {}, catName(p.category) + ' · ' + p.canvas.w + '×' + p.canvas.h), h('span', {}, 'Edited ' + NS.ui.fmtDate(p.updated)), p.cloud ? h('span', { class: 'tag ' + (p.cloud.dirty ? 'warn' : 'ok') }, p.cloud.dirty ? 'Cloud: unsynced changes' : 'Shared (cloud v' + p.cloud.version + ')') : null)));
     card.append(h('div', { class: 'acts' }, h('button', { class: 'btn sm', onclick: () => location.hash = '#/edit/' + p.id }, 'Open'),
       h('button', { class: 'btn sm', onclick: async () => { const c = JSON.parse(JSON.stringify(p)); c.id = NS.uid('prj'); c.name = p.name + ' (copy)'; c.created = c.updated = Date.now(); c.versions = []; try { await NS.Store.put('projects', c); toast('Duplicated.', 'ok'); render(); } catch (e) { toast(e.message, 'err'); } } }, 'Duplicate'),
       h('button', { class: 'btn sm', onclick: async () => { const n = await NS.ui.prompt('Rename project', p.name); if (n) { p.name = n; await NS.Store.put('projects', p); render(); } } }, 'Rename'),
       h('button', { class: 'btn sm', onclick: async () => NS.ui.download(await NS.Export.projectFile(p), (p.name || 'project').replace(/[^\w-]+/g, '_') + '.nsgs.json') }, 'Export file'),
+      !p.cloud && NS.CloudProjects.canEdit() ? h('button', { class: 'btn sm', 'data-upload': p.id, onclick: async () => { if (!(await NS.ui.confirm('Share to the cloud', 'Upload "' + p.name + '" to the NWTT shared cloud? The copy in this browser is kept and linked to it.', 'Upload'))) return; try { await NS.CloudProjects.upload(p); toast('Shared. This project now saves to the cloud too.', 'ok'); render(); } catch (e) { toast(NS.Cloud.msg(e), 'err'); } } }, 'Share to cloud') : null,
       h('button', { class: 'btn sm danger', onclick: async () => { if (await NS.ui.confirm('Delete project', 'Delete "' + p.name + '"? This cannot be undone.', 'Delete', true)) { await NS.Store.del('projects', p.id); toast('Project deleted.', 'ok'); render(); } } }, 'Delete')));
     return card;
   }
@@ -85,7 +86,8 @@
     t.thumb ? th.style.backgroundImage = 'url(' + t.thumb + ')' : lazyThumb(th, t);
     card.append(h('div', { class: 'acts' }, h('button', { class: 'btn sm primary', onclick: () => App.newFromTemplate(t.id) }, 'Use template'),
       h('button', { class: 'btn sm', 'aria-pressed': isFav, title: isFav ? 'Remove favorite' : 'Favorite', onclick: async () => { f.ids = isFav ? f.ids.filter(x => x !== t.id) : f.ids.concat(t.id); await NS.Store.put('settings', { id: 'favorites', ids: f.ids }); render(); } }, isFav ? '★ Favorite' : '☆ Favorite'),
-      t.user ? [h('button', { class: 'btn sm', onclick: async () => { const c = JSON.parse(JSON.stringify(t)); c.id = NS.uid('tpl'); c.name = t.name + ' (copy)'; c.created = Date.now(); await NS.Store.put('templates', c); render(); } }, 'Duplicate'),
+      t.user && !t.cloud && NS.CloudProjects.canEdit() ? h('button', { class: 'btn sm', 'data-share': t.id, onclick: async () => { try { await NS.CloudProjects.shareTemplate(t); toast('Shared with the NWTT team.', 'ok'); render(); } catch (e) { toast(NS.Cloud.msg(e), 'err'); } } }, 'Share with team') : null,
+      t.user && !t.cloud ? [h('button', { class: 'btn sm', onclick: async () => { const c = JSON.parse(JSON.stringify(t)); c.id = NS.uid('tpl'); c.name = t.name + ' (copy)'; c.created = Date.now(); await NS.Store.put('templates', c); render(); } }, 'Duplicate'),
         h('button', { class: 'btn sm', onclick: async () => { const n = await NS.ui.prompt('Collection name', t.collection || 'My templates'); if (n) { t.collection = n; await NS.Store.put('templates', t); render(); } } }, 'Collection…'),
         h('button', { class: 'btn sm', onclick: async () => { const n = await NS.ui.prompt('Rename template', t.name); if (n) { t.name = n; await NS.Store.put('templates', t); render(); } } }, 'Rename'),
         h('button', { class: 'btn sm danger', onclick: async () => { if (await NS.ui.confirm('Delete template', 'Delete template "' + t.name + '"? Projects made from it are not affected.', 'Delete', true)) { await NS.Store.del('templates', t.id); render(); } } }, 'Delete')] : null));
@@ -93,7 +95,7 @@
   }
   async function gallery(title, sub, cats, extra) {
     const root = h('div', {}, h('h1', {}, title), h('p', { class: 'sub' }, sub)); if (extra) root.append(extra);
-    const f = await settings('favorites', { id: 'favorites', ids: [] }); const ut = await NS.Store.all('templates').catch(() => []);
+    const f = await settings('favorites', { id: 'favorites', ids: [] }); const ut = (await NS.Store.all('templates').catch(() => [])).concat(await NS.CloudProjects.loadTemplates().catch(() => []));
     let all = NS.Templates.list.concat(ut), q = '', cat = cats && cats.length === 1 ? cats[0] : 'all', favOnly = false, coll = 'all';
     const colls = ['all', ...new Set(ut.map(t => t.collection || 'My templates'))];
     const grid = h('div', { class: 'grid', id: 'tplGrid' });
@@ -157,7 +159,8 @@
           h('button', { class: 'btn sm danger', onclick: async () => { const u = await used(a.id); if (await NS.ui.confirm('Delete asset', u.length ? '"' + a.name + '" is used by: ' + u.join(', ') + '. Those images will be missing. Delete anyway?' : 'Delete "' + a.name + '"?', 'Delete', true)) { await NS.Store.del('assets', a.id); NS.assetMeta.delete(a.id); NS.assetCache.delete(a.id); draw(); } } }, 'Delete'))))); if (!r.length) grid.append(h('div', { class: 'empty' }, 'No assets.')); };
     const up = h('button', { class: 'btn primary', id: 'assetUpload', onclick: () => { const i = h('input', { type: 'file', multiple: true, accept: 'image/png,image/jpeg,image/gif,image/webp,image/svg+xml' }); i.onchange = async () => { for (const f of i.files) { try { await addAsset(f, coll === 'all' ? 'Uploads' : coll); } catch (e) { toast(e.message, 'err'); } } render(); }; i.click(); } }, 'Upload…');
     const colls = ['all', ...new Set([...NS.assetMeta.values()].map(a => a.collection || 'Uploads'))];
-    root.append(h('div', { class: 'bar' }, h('input', { type: 'search', placeholder: 'Search assets', 'aria-label': 'Search assets', oninput: e => { q = e.target.value; draw(); } }), h('select', { 'aria-label': 'Collection', onchange: e => { coll = e.target.value; draw(); } }, colls.map(c => h('option', { value: c }, c === 'all' ? 'All collections' : c))), up), grid); draw(); return root;
+    root.append(h('div', { class: 'bar' }, h('input', { type: 'search', placeholder: 'Search assets', 'aria-label': 'Search assets', oninput: e => { q = e.target.value; draw(); } }), h('select', { 'aria-label': 'Collection', onchange: e => { coll = e.target.value; draw(); } }, colls.map(c => h('option', { value: c }, c === 'all' ? 'All collections' : c))), up), grid); draw();
+    if (NS.Cloud.configured) root.append(await NS.CloudProjects.assetsSection()); return root;
   };
   async function addAsset(file, collection) {
     if (!/^image\/(png|jpeg|gif|webp|svg\+xml)$/.test(file.type)) throw new Error('Unsupported file type "' + (file.type || 'unknown') + '".'); if (file.size > 20e6) throw new Error('"' + file.name + '" is larger than 20 MB.');
@@ -185,6 +188,9 @@
     return root;
   };
   views.headlines = () => NS.HeadlinesView();
+  views.live = arg => NS.Live.view(arg);
+  views.shared = () => NS.CloudProjects.view();
+  views.team = () => NS.Cloud.teamView();
   views.incidents = () => NS.IncidentsView();
   views.incident = key => NS.IncidentPageView(key);
   views.resources = async () => { location.replace('#/incidents'); return h('div'); }; // old bookmark
@@ -227,6 +233,7 @@
     TABS.forEach(([id, l, href]) => tabs.append(h('a', { role: 'tab', href, 'data-tab': id, id: 'tab-' + id }, l)));
     NAV.forEach(([id, l]) => nav.append(id === 'sep' ? h('div', { class: 'navsep' }, l) : h('a', Object.assign({ href: id.startsWith('ext:') ? id.slice(4) : '#/' + id, 'data-r': id }, id.startsWith('ext:') ? { target: '_blank', rel: 'noopener' } : {}), l)));
     await NS.loadConfig(); NS.prepareFonts(); NS.assetsReady = loadAssets(); await NS.assetsReady;
+    tabs.append(NS.Cloud.chip()); await NS.Cloud.init(); let cloudKey = NS.Cloud.status + '|' + NS.Cloud.role(); NS.Cloud.on(() => { const k = NS.Cloud.status + '|' + NS.Cloud.role(); if (k === cloudKey) return; cloudKey = k; if (['live', 'shared', 'team'].includes((location.hash.replace(/^#\//, '').split('/')[0]))) render(); });   // re-render only when sign-in state or role changes
     const b = await NS.getBrand(); document.getElementById('orgName').textContent = (b.orgName || 'Newsroom').toUpperCase(); NS.brand = b;
     try { await NS.Store.get('settings', 'brand'); } catch (e) { toast('Browser storage is unavailable: ' + e.message + ' Nothing can be saved.', 'err', 12000); }
     render();

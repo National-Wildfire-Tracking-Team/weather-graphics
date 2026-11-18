@@ -26,5 +26,9 @@
     "orgName": "NWTT",
     "tagline": "National Wildfire Tracking Team",
     "attribution": "Basemap © Mapbox © OpenStreetMap"
+  },
+  "supabase": {
+    "url": "https://meqtsuapaxydmcyjoshn.supabase.co",
+    "anonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1lcXRzdWFwYXh5ZG1jeWpvc2huIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUwMDE1MTksImV4cCI6MjExMDU3NzUxOX0.qSRzhcP7xEd9xVknt1o_z0FeFEFe2DjgKJuMvwy5CG0"
   }
 }

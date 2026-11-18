@@ -33,7 +33,7 @@
     { id: '09', name: '09 — Technical Standby', sources: ['Image: NWTT Technical Difficulties (full-screen)'] },
     { id: '10', name: '10 — Ending Coverage', sources: ['Image: NWTT Broadcast Ending (full-screen)'] }
   ];
-  const DOCS = { '': ['OBS Setup Guide', 'docs/obs-setup-guide.md'], onboarding: ['Broadcaster Onboarding', 'docs/broadcaster-onboarding.md'] };
+  const DOCS = { '': ['OBS Setup Guide', 'docs/obs-setup-guide.md'], onboarding: ['Broadcaster Onboarding', 'docs/broadcaster-onboarding.md'], live: ['Live Graphics (Browser Source)', 'docs/live-browser-source.md'] };
 
   /* Minimal Markdown → DOM for our own docs: headings, paragraphs, lists, tables, code, quotes, **bold**, `code`, links.
      Builds DOM nodes (no innerHTML), so document text can never inject markup. */
@@ -43,7 +43,7 @@
       if (m.index > i) out.push(text.slice(i, m.index));
       if (m[2]) out.push(h('b', {}, m[2])); else if (m[3]) out.push(h('code', {}, m[3]));
       else { const href = m[5], safe = /^(https?:|#|\.{0,2}\/?[\w.-]+(\.html|\.md)?(#[\w/-]*)?$)/.test(href) && !/^javascript:/i.test(href);
-        const doc = href.match(/^(?:\.\/)?([\w-]+)\.md$/), target = doc ? (doc[1] === 'obs-setup-guide' ? '#/obs' : '#/obs/' + doc[1].replace('broadcaster-', '')) : href;
+        const doc = href.match(/^(?:\.\/)?([\w-]+)\.md$/), target = doc ? ({ 'obs-setup-guide': '#/obs', 'broadcaster-onboarding': '#/obs/onboarding', 'live-browser-source': '#/obs/live' }[doc[1]] || href) : href;
         out.push(safe ? h('a', Object.assign({ href: target }, /^https?:/.test(href) ? { target: '_blank', rel: 'noopener' } : {}), m[4]) : m[4]); }
       i = re.lastIndex;
     }

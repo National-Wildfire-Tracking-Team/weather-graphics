@@ -1,0 +1,9 @@
+{
+  "name": "nwtt-graphics-cloud-tests",
+  "private": true,
+  "type": "module",
+  "description": "Phase 2 backend tests (RLS, broadcast RPCs) against a local Supabase stack. See tests/cloud/README.md.",
+  "devDependencies": {
+    "@supabase/supabase-js": "2.118.0"
+  }
+}
