@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lower Third Live</title>
+<!-- Browser source for OBS / vMix / Wirecast. Transparent background; the lower third is encoded in the URL hash
+     (#c=...), built by the Studio's Lower Thirds page. Click / Space / Enter toggles in and out. -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@600&family=Barlow+Condensed:wght@600;700;800&display=swap">
+<style>
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+  canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; }
+  #msg { position: fixed; left: 16px; top: 16px; font: 600 16px/1.4 system-ui, sans-serif; color: #fff; background: rgba(12,17,25,.85); padding: 10px 14px; border-radius: 6px; max-width: 520px; }
+</style>
+</head>
+<body>
+<canvas id="lt" aria-label="Lower third"></canvas>
+<div id="msg" hidden></div>
+<script src="js/lowerthirds-render.js"></script>
+<script>
+(async function () {
+  const LT = NS.LT, cv = document.getElementById('lt'), msg = document.getElementById('msg');
+  const q = new URLSearchParams(location.search);
+  function readCfg() {
+    const m = /[#&]c=([^&]+)/.exec(location.hash);
+    if (!m) return null;
+    try { return LT.decode(m[1]); } catch (e) { return null; }
+  }
+  // Render at the source's real pixel size (OBS: set the browser source to 1920×1080 or 1280×720).
+  function size() { const d = window.devicePixelRatio || 1; cv.width = Math.round(innerWidth * d); cv.height = Math.round(innerHeight * d); }
+  size(); addEventListener('resize', size);
+  let cfg = readCfg();
+  if (!cfg) { msg.hidden = false; msg.textContent = 'No lower third in this link. Build one in the Studio (Lower Thirds) and use "Copy OBS / vMix URL".'; return; }
+  await LT.fontsReady();
+  const player = LT.Player(cv, cfg, { autoOut: q.get('auto') !== '0' }).start();
+  window.ltPlayer = player;
+  // ?static=1 shows the finished frame with no animation (for capture tools that grab a single frame).
+  if (q.get('static') === '1') player.show(); else if (q.get('wait') !== '1') setTimeout(() => player.in(), Math.max(0, +(q.get('delay') || 0.3)) * 1000);
+  addEventListener('click', () => player.toggle());
+  addEventListener('keydown', e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); player.toggle(); } if (e.key === 'r') { player.p = 0; player.state = 'off'; player.in(); } });
+  addEventListener('hashchange', () => { const c = readCfg(); if (c) player.cfg = cfg = c; });
+  // Same-browser remote control from the Studio (Take / Clear / live edits). Does not reach OBS's embedded browser.
+  if ('BroadcastChannel' in window) {
+    const bc = new BroadcastChannel('nsgs-lowerthirds');
+    bc.onmessage = e => { const d = e.data || {}; if (d.cfg) player.cfg = cfg = d.cfg; if (d.cmd === 'in') player.in(); if (d.cmd === 'out') player.out(); };
+  }
+})();
+</script>
+</body>
+</html>

@@ -3,7 +3,7 @@
   const { h, toast } = NS.ui;
   const NAV = [
     ['dashboard', 'Dashboard'], ['studio', 'Graphics Studio'], ['map', 'Interactive Map Studio'], ['sep', 'Workspaces'],
-    ['weather', 'Weather Graphics'], ['alerts', 'NWS Alert Graphics'], ['hazards', 'Week-Ahead Hazards'], ['news', 'Breaking News Graphics'], ['broadcast', 'Broadcast Graphics'], ['social', 'Social Media Graphics'], ['sep', 'Library'],
+    ['weather', 'Weather Graphics'], ['alerts', 'NWS Alert Graphics'], ['hazards', 'Week-Ahead Hazards'], ['news', 'Breaking News Graphics'], ['broadcast', 'Broadcast Graphics'], ['lowerthirds', 'Lower Thirds'], ['social', 'Social Media Graphics'], ['sep', 'Library'],
     ['templates', 'Template Library'], ['assets', 'Asset Library'], ['projects', 'Saved Projects'], ['sep', 'Settings'], ['brand', 'Brand Settings'], ['exports', 'Export Center'], ['sep', 'Tools'], ['ext:plate-builder.html', 'Plate Builder (counties)']
   ];
   // Top-level tabs. Every route not owned by another tab belongs to Graphics Studio (sidebar visible).
@@ -182,6 +182,7 @@
         await NS.Store.put('settings', nb); await NS.Store.put('settings', { id: 'map', token: tok.value.trim(), style: sty.value.trim() }); if (tok.value.trim() && !NS.config.token) NS.config.token = tok.value.trim(); document.getElementById('orgName').textContent = (nb.orgName || 'Newsroom').toUpperCase(); toast('Brand settings saved.', 'ok'); } catch (e) { toast('Could not save: ' + e.message, 'err'); } } }, 'Save brand settings')));
     return root;
   };
+  views.lowerthirds = () => NS.LowerThirdsView();
   views.headlines = () => NS.HeadlinesView();
   views.resources = () => NS.ResourcesView();
   views.exports = async () => {

@@ -3,7 +3,7 @@
 set -u
 cd "$(dirname "$0")"
 rc=0
-for t in editor editor2 map mapexport export templates app alerts outlooks streaming hazards tabs; do
+for t in editor editor2 map mapexport export templates app alerts outlooks streaming hazards tabs lowerthirds; do
   echo "=== $t ==="
   node "$t.test.mjs" || rc=1
 done

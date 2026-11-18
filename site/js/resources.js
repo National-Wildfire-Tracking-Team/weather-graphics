@@ -32,6 +32,7 @@
     ] },
     { group: 'Our tools', items: [
       ['Plate Builder (counties)', 'plate-builder.html', 'Paint county risk areas and export 1080p/4K/720p plates.'],
+      ['Lower Thirds', '#/lowerthirds', 'Cable/business-news lower thirds: OBS/vMix live URL, transparent PNG, WebM.'],
       ['NWS Alert Graphics', '#/alerts', 'Turn active alerts into a map graphic.'],
       ['Week-Ahead Hazards', '#/hazards', '5-7 day outlook overview graphic.'],
       ['Template Library', '#/templates', 'Starting layouts for weather, news and social.'],
