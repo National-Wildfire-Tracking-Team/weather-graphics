@@ -1,10 +1,10 @@
-import { launch, check, summary, BASE } from './lib.mjs';
+import { launch, check, summary, BASE, clickDownload } from './lib.mjs';
 import fs from 'fs';
 const { b, page, errs } = await launch();
 const ev = (fn, arg) => page.evaluate(fn, arg);
 console.log('Streaming destinations (OBS / StreamYard)');
 const pngInfo = buf => ({ w: buf.readUInt32BE(16), h: buf.readUInt32BE(20), colorType: buf[25], bytes: buf.length });
-async function download(sel) { const [d] = await Promise.all([page.waitForEvent('download'), page.click(sel)]); return { name: d.suggestedFilename(), buf: fs.readFileSync(await d.path()) }; }
+async function download(sel) { const d = await clickDownload(page, sel); return { name: d.suggestedFilename(), buf: fs.readFileSync(await d.path()) }; }
 async function exportAs(dest) {
   await page.click('#exportBtn'); await page.waitForSelector('#renderPreview');
   await page.selectOption('dialog select[aria-label=Destination]', dest); await page.click('#renderPreview');
@@ -16,7 +16,7 @@ async function exportAs(dest) {
 await ev(() => NS.App.newFromTemplate('bc-lower3')); await page.waitForSelector('#workspace canvas'); await page.waitForTimeout(1200);
 let r = await exportAs('obs');
 check('OBS: 1920x1080 RGBA PNG', r.info.w === 1920 && r.info.h === 1080 && r.info.colorType === 6, r.info);
-check('OBS: filename tagged _obs', /_1920x1080_obs\.png$/.test(r.name), r.name);
+check('OBS overlay: filename tagged _obs-overlay', /_1920x1080_obs-overlay\.png$/.test(r.name), r.name);
 check('OBS: how-to shown', /Sources → \+ → Image/.test(r.text));
 r = await exportAs('sy-overlay');
 check('StreamYard overlay: 1280x720 RGBA PNG', r.info.w === 1280 && r.info.h === 720 && r.info.colorType === 6, r.info);

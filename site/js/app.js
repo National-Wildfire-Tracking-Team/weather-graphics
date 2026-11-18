@@ -3,7 +3,7 @@
   const { h, toast } = NS.ui;
   const NAV = [
     ['dashboard', 'Dashboard'], ['studio', 'Graphics Studio'], ['map', 'Interactive Map Studio'], ['sep', 'Workspaces'],
-    ['weather', 'Weather Graphics'], ['alerts', 'NWS Alert Graphics'], ['hazards', 'Week-Ahead Hazards'], ['news', 'Breaking News Graphics'], ['broadcast', 'Broadcast Graphics'], ['social', 'Social Media Graphics'], ['sep', 'Library'],
+    ['weather', 'Weather Graphics'], ['alerts', 'NWS Alert Graphics'], ['hazards', 'Week-Ahead Hazards'], ['news', 'Breaking News Graphics'], ['broadcast', 'Broadcast Graphics'], ['social', 'Social Media Graphics'], ['sep', 'Live production'], ['obs', 'OBS Setup Guide'], ['sep', 'Library'],
     ['templates', 'Template Library'], ['assets', 'Asset Library'], ['projects', 'Saved Projects'], ['sep', 'Settings'], ['brand', 'Brand Settings'], ['exports', 'Export Center'], ['sep', 'Tools'], ['ext:plate-builder.html', 'Plate Builder (counties)']
   ];
   // Top-level tabs. Every route not owned by another tab belongs to Graphics Studio (sidebar visible).
@@ -116,7 +116,8 @@
   views.alerts = () => NS.AlertsView();
   views.hazards = () => NS.HazardsView();
   views.news = () => gallery('Breaking News Graphics', 'Full-screen headline, alert, location and chart graphics. Edit headlines and fields without rebuilding the design.', ['breaking', 'safety', 'general']);
-  views.broadcast = () => gallery('Broadcast Graphics', 'Lower thirds, bugs, straps, cards and presenter overlays. Transparent templates export as true transparent PNG.', ['broadcast']);
+  views.broadcast = () => gallery('Broadcast Graphics', 'Lower thirds, bugs, straps, cards and presenter overlays. Transparent templates export as true transparent PNG.', ['broadcast'], NS.Broadcast.kitTable());
+  views.obs = arg => NS.Broadcast.guideView(arg);
   views.social = () => gallery('Social Media Graphics', 'Facebook, Instagram, YouTube, X and web formats. Use Canvas → "Create variant" inside a project to make another aspect ratio without touching the original.', ['social']);
   views.templates = () => gallery('Template Library', 'All templates, including the ones you saved from projects.', null);
 
@@ -142,7 +143,7 @@
     const root = h('div', {}, h('h1', {}, 'Saved Projects')); let all = await NS.Store.all('projects').catch(() => []); let q = '', cat = 'all', sort = 'updated';
     const grid = h('div', { class: 'grid', id: 'projGrid' });
     const draw = () => { grid.innerHTML = ''; let r = all.filter(p => (cat === 'all' || p.category === cat) && (!q || p.name.toLowerCase().includes(q.toLowerCase()))); r.sort((a, b) => sort === 'name' ? a.name.localeCompare(b.name) : b.updated - a.updated); r.forEach(p => grid.append(projectCard(p))); if (!r.length) grid.append(h('div', { class: 'empty' }, all.length ? 'No projects match.' : 'No saved projects yet.')); };
-    const imp = h('button', { class: 'btn', id: 'importProject', onclick: () => { const i = h('input', { type: 'file', accept: '.json,application/json' }); i.onchange = async () => { try { const d = JSON.parse(await i.files[0].text()); if (d.format !== 'newsroom-graphics-studio-project') throw new Error('Not a Newsroom Graphics Studio project file.'); for (const a of d.assets || []) { await NS.Store.put('assets', a); NS.assetMeta.set(a.id, a); NS.assetCache.set(a.id, a.dataUrl); } d.project.id = NS.uid('prj'); d.project.name += ' (imported)'; await NS.Store.put('projects', d.project); toast('Project imported.', 'ok'); render(); } catch (e) { toast('Import failed: ' + e.message, 'err'); } }; i.click(); } }, 'Import project file…');
+    const imp = h('button', { class: 'btn', id: 'importProject', onclick: () => { const i = h('input', { type: 'file', accept: '.json,application/json' }); i.onchange = async () => { try { const d = JSON.parse(await i.files[0].text()); if (d.format !== 'newsroom-graphics-studio-project') throw new Error('Not a Newsroom Graphics Studio project file.'); for (const a of d.assets || []) { await NS.Store.put('assets', a); NS.assetMeta.set(a.id, a); NS.assetCache.set(a.id, a.dataUrl); } d.project.id = NS.uid('prj'); if (all.some(p => p.name === d.project.name)) d.project.name += ' (imported)'; /* keep the name otherwise: OBS file names come from it */ await NS.Store.put('projects', d.project); toast('Project imported.', 'ok'); render(); } catch (e) { toast('Import failed: ' + e.message, 'err'); } }; i.click(); } }, 'Import project file…');
     root.append(h('div', { class: 'bar' }, h('input', { type: 'search', placeholder: 'Search projects', 'aria-label': 'Search projects', oninput: e => { q = e.target.value; draw(); } }), h('select', { 'aria-label': 'Category', onchange: e => { cat = e.target.value; draw(); } }, h('option', { value: 'all' }, 'All categories'), NS.TEMPLATE_CATS.map(c => h('option', { value: c[0] }, c[1]))), h('select', { 'aria-label': 'Sort', onchange: e => { sort = e.target.value; draw(); } }, h('option', { value: 'updated' }, 'Last edited'), h('option', { value: 'name' }, 'Name')), imp), grid); draw(); return root;
   };
   views.assets = async () => {

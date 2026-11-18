@@ -19,10 +19,14 @@
     return n ? [n + ' object' + (n > 1 ? 's extend' : ' extends') + ' beyond the canvas edge and will be clipped in the export.'] : [];
   }
   /* Live-production destinations. OBS's default canvas is 1920×1080 and its Image source keeps PNG alpha.
+     OBS has two standard uses: an overlay (transparent PNG at the top of a scene) and a full-screen graphic or map (opaque PNG at the bottom).
+     Filenames carry no timestamp, so re-exporting replaces the file in place and OBS reloads the Image source automatically.
      StreamYard's published spec for overlays/backgrounds is 1280×720, JPG/PNG/GIF, under 20 MB; overlays need transparency. */
   const TARGETS = {
-    obs: { label: 'OBS Studio — Image source (1920×1080 PNG)', w: 1920, h: 1080, format: 'png', alpha: 'keep', suffix: '_obs',
-      howto: 'In OBS: Sources → + → Image → pick this file. It fills a 1920×1080 canvas exactly; transparent areas show the sources below it.' },
+    obs: { label: 'OBS Studio — Overlay (1920×1080 transparent PNG)', w: 1920, h: 1080, format: 'png', alpha: 'keep', needsAlpha: true, maxCover: 0.45, suffix: '_obs-overlay', obs: 'overlay',
+      howto: 'OBS overlay: Sources → + → Image → pick this file, and keep it at the TOP of the scene\'s source list so cameras, maps and full-screen graphics show through the transparent areas. It fills a 1920×1080 canvas exactly. To update it on air, export again with the same name into the same folder: OBS reloads the image automatically.' },
+    'obs-full': { label: 'OBS Studio — Full-screen graphic or map (1920×1080 opaque PNG)', w: 1920, h: 1080, format: 'png', alpha: 'off', suffix: '_obs-full', obs: 'full',
+      howto: 'OBS full-screen: Sources → + → Image → pick this file, and keep it at the BOTTOM of the scene\'s source list; overlays (lower thirds, source line, LIVE bug) go above it. It fills a 1920×1080 canvas exactly. To update it on air, export again with the same name into the same folder: OBS reloads the image automatically.' },
     'sy-overlay': { label: 'StreamYard — Overlay (1280×720 transparent PNG)', w: 1280, h: 720, format: 'png', alpha: 'keep', maxBytes: 20e6, needsAlpha: true, suffix: '_streamyard-overlay',
       howto: 'In StreamYard: Brand → Overlays → + → upload this file, then click it in the studio to show it over the cameras.' },
     'sy-background': { label: 'StreamYard — Background (1280×720 PNG)', w: 1280, h: 720, format: 'png', alpha: 'off', maxBytes: 20e6, suffix: '_streamyard-bg',
@@ -41,10 +45,26 @@
       const t = TARGETS[id]; if (!t) return []; const w = [];
       if (r.w !== t.w || r.h !== t.h) w.push('This design is ' + project.canvas.w + '×' + project.canvas.h + ', not 16:9, so the file is ' + r.w + '×' + r.h + ' instead of ' + t.w + '×' + t.h + '. ' + (id === 'obs' ? 'OBS will show it unscaled; resize it in the scene if needed.' : 'StreamYard stretches overlays and backgrounds to fill the frame, so it will look distorted. Use a 1920×1080 or 1280×720 canvas.'));
       if (t.maxBytes && r.blob.size > t.maxBytes) w.push('File is ' + NS.ui.fmtBytes(r.blob.size) + '; StreamYard rejects files over 20 MB.');
-      if (t.needsAlpha && !r.info.hasAlpha) w.push('This file has no transparent pixels, so as an overlay it will cover the cameras. Use a transparent template (e.g. Broadcast → Lower third) or export as a StreamYard background instead.');
+      if (t.needsAlpha && !r.info.hasAlpha) w.push(t.obs ? 'This file has no transparent pixels, so as an OBS overlay it will hide everything below it in the scene (cameras, maps). Use a transparent template (e.g. Broadcast → Lower third) or choose "OBS Studio — Full-screen graphic or map" instead.'
+        : 'This file has no transparent pixels, so as an overlay it will cover the cameras. Use a transparent template (e.g. Broadcast → Lower third) or export as a StreamYard background instead.');
+      else if (t.maxCover && r.info.coverFraction > t.maxCover) w.push('This overlay covers ' + Math.round(r.info.coverFraction * 100) + '% of the frame, so it will hide most of the map or camera under it. Keep overlays to the edges of the frame (header, lower third, source line), or use a full-screen export.');
       return w;
     },
     sampleCount(project) { let n = 0; (function w(a) { (a || []).forEach(o => { if (o.sample) n++; w(o.objects); }); })(project.objects); return n; },
+    /* Things that make a graphic unfit to air as-is: sample objects, placeholder text ("[ZONE NAME]", "HEADLINE GOES HERE"…)
+       and empty date/time fields shown on the graphic. Export asks for confirmation while any remain. */
+    PLACEHOLDER: /\[[^\]\n]{1,60}\]|GOES HERE|REPLACE (WITH|BEFORE)|^Enter source$|^Describe the incident$/i,
+    readiness(project) {
+      const out = [], f = project.fields || {}, used = new Set(), hidden = o => o.showIf && !f[o.showIf];
+      const n = E.sampleCount(project); if (n) out.push(n + ' sample-content object' + (n > 1 ? 's' : '') + ' (e.g. the SAMPLE badge) still on the graphic.');
+      const texts = []; (function w(a) { (a || []).forEach(o => { if (!o.sample && !hidden(o)) { if (o.fieldKey) used.add(o.fieldKey); else if (typeof o.text === 'string') texts.push(o.text); } w(o.objects); }); })(project.objects);
+      const defs = project.fieldDefs || [], label = k => ((defs.find(d => d.key === k) || {}).label || k);
+      const ph = [...used].filter(k => typeof f[k] === 'string' && E.PLACEHOLDER.test(f[k].trim())).map(label).concat(texts.filter(t => E.PLACEHOLDER.test(t.trim())).map(t => '"' + t.slice(0, 40) + '"'));
+      if (ph.length) out.push('Placeholder text not replaced: ' + ph.slice(0, 6).join(', ') + (ph.length > 6 ? '…' : '') + '.');
+      const times = defs.filter(d => d.type === 'datetime' && used.has(d.key) && !f[d.key]).map(d => d.label);
+      if (times.length) out.push('Empty time field' + (times.length > 1 ? 's' : '') + ': ' + times.join(', ') + '. Incident and warning graphics need an "as of" time.');
+      return out;
+    },
     async render(project, o) {
       o = Object.assign({ format: 'png', scale: 1, transparent: false, quality: 0.92 }, o);
       const W = project.canvas.w, H = project.canvas.h, scale = o.scale, outW = Math.round(W * scale), outH = Math.round(H * scale);
@@ -87,9 +107,9 @@
     async verify(blob, format, w, h) {
       if (format === 'svg') return { w, h, hasAlpha: true, bytes: blob.size, mismatch: false };
       const bmp = await createImageBitmap(blob), c = document.createElement('canvas'); c.width = Math.min(bmp.width, 512); c.height = Math.min(bmp.height, 512);
-      const ctx = c.getContext('2d'); ctx.drawImage(bmp, 0, 0, c.width, c.height); const d = ctx.getImageData(0, 0, c.width, c.height).data; let clear = 0;
-      for (let i = 3; i < d.length; i += 4) if (d[i] < 250) clear++;
-      const out = { w: bmp.width, h: bmp.height, hasAlpha: clear > 0, clearFraction: clear / (d.length / 4), bytes: blob.size, mismatch: bmp.width !== w || bmp.height !== h }; bmp.close && bmp.close(); return out;
+      const ctx = c.getContext('2d'); ctx.drawImage(bmp, 0, 0, c.width, c.height); const d = ctx.getImageData(0, 0, c.width, c.height).data; let clear = 0, cover = 0;
+      for (let i = 3; i < d.length; i += 4) { if (d[i] < 250) clear++; if (d[i] >= 128) cover++; }
+      const out = { w: bmp.width, h: bmp.height, hasAlpha: clear > 0, clearFraction: clear / (d.length / 4), coverFraction: cover / (d.length / 4), bytes: blob.size, mismatch: bmp.width !== w || bmp.height !== h }; bmp.close && bmp.close(); return out;
     },
     fileName(project, r, suffix) { return (project.name || 'graphic').replace(/[^\w\-]+/g, '_') + '_' + r.w + 'x' + r.h + (TARGETS[r.target] ? TARGETS[r.target].suffix : '') + (suffix || '') + '.' + r.ext; },
     download(blob, name) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); },

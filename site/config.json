@@ -21,5 +21,10 @@
       "name": "TORNADO RISK",
       "color": "#F2453D"
     }
-  ]
+  ],
+  "brand": {
+    "orgName": "NWTT",
+    "tagline": "National Wildfire Tracking Team",
+    "attribution": "Basemap © Mapbox © OpenStreetMap"
+  }
 }

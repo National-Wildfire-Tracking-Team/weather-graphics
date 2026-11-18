@@ -2,11 +2,13 @@
    Engine: Mapbox GL JS v3.9.0 (already used by the Weather Plate Builder in this repo).
    Map state is plain JSON (see NS.defaultMapState) and is stored separately from the canvas composition. */
 (function () {
-  NS.config = { token: '', style: '', projection: null };
+  NS.config = { token: '', style: '', projection: null, brand: null };
   NS.loadConfig = async function () {
     try {
       const r = await fetch('config.json', { cache: 'no-store' });
-      if (r.ok) { const c = await r.json(); ['token', 'style'].forEach(k => { if (typeof c[k] === 'string' && !/REPLACE_ME/.test(c[k])) NS.config[k] = c[k]; }); NS.config.projection = c.projection || null; }
+      if (r.ok) { const c = await r.json(); ['token', 'style'].forEach(k => { if (typeof c[k] === 'string' && !/REPLACE_ME/.test(c[k])) NS.config[k] = c[k]; }); NS.config.projection = c.projection || null;
+        // Optional shared brand defaults (orgName, tagline, attribution, colors, fonts) so every broadcaster's browser starts with the same branding.
+        if (c.brand && typeof c.brand === 'object') { const b = {}; ['orgName', 'tagline', 'attribution'].forEach(k => { if (typeof c.brand[k] === 'string') b[k] = c.brand[k]; }); if (Array.isArray(c.brand.colors)) b.colors = c.brand.colors.filter(x => x && typeof x.name === 'string' && /^#[0-9a-f]{6}$/i.test(x.hex)); if (c.brand.fonts && typeof c.brand.fonts === 'object') b.fonts = c.brand.fonts; NS.config.brand = b; } }
     } catch (e) { /* offline or file:// */ }
     try { const s = await NS.Store.get('settings', 'map'); if (s) { if (s.token && !NS.config.token) NS.config.token = s.token; if (s.style && !NS.config.style) NS.config.style = s.style; } } catch (e) {}
   };
