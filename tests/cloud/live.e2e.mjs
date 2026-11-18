@@ -221,7 +221,7 @@ const dp = await D.newPage(); await dp.goto(SITE + 'index.html#/dashboard'); awa
 check('cloud unreachable: Studio still loads and local editing works', await dp.evaluate(async () => { await NS.App.newBlank(1920, 1080); await new Promise(r => setTimeout(r, 1500)); return !!document.querySelector('#workspace canvas'); }));
 await dp.goto(SITE + 'index.html#/live'); await dp.waitForTimeout(1500);
 check('cloud unreachable: Live Broadcast Control says so and offers the PNG fallback', /unreachable|Sign in/.test(await dp.innerText('main')) && await dp.isVisible('text=Download fallback holding cards'), await dp.innerText('main'));
-const E = await b.newContext(); const ep = await E.newPage(); await ep.goto(SITE + 'index.html#/live'); await ep.waitForSelector('#nav a', { state: 'attached' }); await ep.waitForTimeout(1000);
+const E = await b.newContext(); await E.route('**/config.json', async r => { const res = await r.fetch(); const j = await res.json(); delete j.supabase; r.fulfill({ response: res, json: j }); }); const ep = await E.newPage(); await ep.goto(SITE + 'index.html#/live'); await ep.waitForSelector('#nav a', { state: 'attached' }); await ep.waitForTimeout(1000);
 check('no cloud configured: Live Broadcast Control explains it and keeps the Phase 1 PNG workflow', /needs the shared cloud/.test(await ep.innerText('main')) && !(await ep.isVisible('#cloudChip')));
 check('a service-role key in config.json is refused by the browser', await ep.evaluate(sk => NS.Cloud.safeConfig({ url: 'https://x.supabase.co', anonKey: sk }) === 'secret' && NS.Cloud.safeConfig({ url: 'https://x.supabase.co', anonKey: 'sb_secret_abc' }) === 'secret', (await import('./env.mjs')).SERVICE));
 await D.close(); await E.close();
