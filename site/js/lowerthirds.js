@@ -16,20 +16,21 @@
     ['Live report', { style: 'cable', tag: 'HAPPENING NOW', headline: 'Headline goes here', sub: 'Reporter name · Location', liveOn: true, liveText: 'LIVE', liveLoc: 'CITY, ST', tickerOn: true }],
     ['Guest / interview', { style: 'nameplate', tag: '', headline: 'Guest Name', sub: 'Title, Organization', tickerOn: false, liveOn: false }],
     ['Markets', { style: 'business', tag: 'MARKETS', headline: 'Headline goes here', sub: 'Supporting line with the key detail', tickerOn: true, tickerLabel: 'MARKETS', ticker: 'SYMBOL 100.00 +1.25\nSYMBOL 100.00 -0.50\nType your own items: name, value, then +/- change', liveOn: false }],
+    ['Weather live shot', { style: 'wxlive', tag: 'NOW:', headline: 'Headline goes here', sub: 'Supporting line with the key detail', reporter: 'Reporter Name', reporterTitle: 'Storm Specialist', tickerOn: true, tickerLabel: 'WEATHER WIRE', liveText: 'LIVE', liveOn: false, boxOn: true, boxTitle: 'WINTER STORM', boxSub: 'LIVE RADAR' }],
     ['Weather alert', { style: 'weather', tag: 'WEATHER ALERT', headline: 'Alert headline goes here', sub: 'Counties / area · Until time', tickerOn: true, tickerLabel: 'ALERTS', liveOn: false }]
   ];
 
   NS.LowerThirdsView = async function () {
     let cfg = Object.assign({}, LT.DEFAULTS, load(KEY, {}));
     cfg.colors = Object.assign({}, cfg.colors);
-    await LT.fontsReady();
+    await LT.fontsReady(); await LT.preload(cfg);
     const bc = 'BroadcastChannel' in window ? new BroadcastChannel('nsgs-lowerthirds') : null;
 
     /* ---- preview ---- */
     const cv = h('canvas', { id: 'ltCanvas', width: 1920, height: 1080, 'aria-label': 'Lower third preview' });
     const stage = h('div', { class: 'lt-stage bg-checker', id: 'ltStage' }, cv);
     const stateTag = h('span', { class: 'tag', id: 'ltState' }, 'off');
-    const player = LT.Player(cv, cfg, { autoOut: true, onstate: s => { stateTag.textContent = s; } });
+    const player = LT.Player(cv, cfg, { autoOut: true, preview: true, onstate: s => { stateTag.textContent = s; } });
     // Stop animating once the view has been navigated away from.
     let seen = false; (function watch() { if (cv.isConnected) seen = true; else if (seen) { player.stop(); bc && bc.close(); return; } setTimeout(watch, 1000); })();
     player.start(); player.show();
@@ -67,7 +68,9 @@
     const labHead = h('span'), labSub = h('span'), labTag = h('span');
     function syncLabels() {
       const np = LT.STYLES[cfg.style].layout === 'nameplate';
-      labHead.textContent = np ? 'Name' : 'Headline'; labSub.textContent = np ? 'Title' : 'Sub line'; labTag.textContent = np ? 'Side box' : 'Tag';
+      const wx = cfg.style === 'wxlive';
+      labHead.textContent = np ? 'Name' : 'Headline'; labSub.textContent = np ? 'Title' : 'Sub line'; labTag.textContent = np ? 'Side box' : wx ? 'Red prefix' : 'Tag';
+      if (typeof wxSec !== 'undefined') wxSec.hidden = !wx;
     }
     const relabel = (row, span) => { const l = row.querySelector('label'); l.textContent = ''; l.append(span); return row; };
 
@@ -76,11 +79,43 @@
     } }, name));
 
     function refill() {
-      Object.entries(inputs).forEach(([k, el]) => { if (el.type === 'checkbox') el.checked = !!cfg[k]; else el.value = cfg[k] == null ? '' : cfg[k]; });
+      Object.entries(inputs).forEach(([k, el]) => { if (el.type === 'image') el.value = cfg[k]; else if (el.type === 'checkbox') el.checked = !!cfg[k]; else el.value = cfg[k] == null ? '' : cfg[k]; });
       syncColors();
     }
     styleSel.addEventListener('change', () => { cfg.colors = {}; syncColors(); changed(); });
 
+    // Images are downscaled and stored inside the config (so the live URL carries them). Logo keeps transparency.
+    function imagePicker(key, label, maxW, maxH, png) {
+      const file = h('input', { type: 'file', accept: 'image/*', hidden: true, id: 'lt-file-' + key });
+      const st = h('span', { class: 'hint', id: 'lt-img-' + key }, cfg[key] ? 'Image set' : 'None');
+      file.addEventListener('change', async () => {
+        const f = file.files[0]; if (!f) return;
+        try {
+          const im = await NS.ui.loadImage(await NS.ui.fileToDataURL(f)), k = Math.min(1, maxW / im.width, maxH / im.height);
+          const c = document.createElement('canvas'); c.width = Math.round(im.width * k); c.height = Math.round(im.height * k); c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+          set(key, png ? c.toDataURL('image/png') : c.toDataURL('image/jpeg', 0.85)); st.textContent = 'Image set'; await LT.preload(cfg);
+        } catch (e) { toast('Could not use that image: ' + e.message, 'err'); }
+        file.value = '';
+      });
+      inputs[key] = { type: 'image', set value(v) { st.textContent = v ? 'Image set' : 'None'; } };
+      return h('div', { class: 'prop' }, h('label', {}, label), h('div', { class: 'ctl' }, file,
+        h('button', { class: 'btn sm', id: 'lt-pick-' + key, onclick: () => file.click() }, 'Upload…'),
+        h('button', { class: 'btn sm', onclick: () => { set(key, ''); st.textContent = 'None'; } }, 'Clear'), st));
+    }
+    const rowsTa = h('textarea', { rows: 5, placeholder: 'Label | value, one per line (max 5)', style: 'width:100%;resize:vertical' }); rowsTa.value = cfg.wxRows || '';
+    const wxSec = h('div', { class: 'sec', id: 'ltWxSec' }, h('h4', {}, 'Weather live shot'),
+      field('Reporter', 'reporter', txt('reporter', 'Reporter Name')), field('Role', 'reporterTitle', txt('reporterTitle', 'Storm Specialist')),
+      field('Logo line 1', 'logoTop', txt('logoTop', 'WX')), field('Logo line 2', 'logoBottom', txt('logoBottom', 'WEATHER')),
+      imagePicker('logoImg', 'Logo image', 400, 400, true),
+      h('p', { class: 'hint' }, 'A logo image replaces the two logo lines. Use a PNG with transparency.'),
+      field('Right box', 'boxOn', chk('boxOn')), field('Box title', 'boxTitle', txt('boxTitle', 'WINTER STORM')), field('Box strip', 'boxSub', txt('boxSub', 'LIVE RADAR')),
+      imagePicker('boxImg', 'Box image', 640, 360, false),
+      h('p', { class: 'hint' }, 'E.g. a radar or map screenshot (export one from Map Studio).'),
+      h('h4', { style: 'margin-top:12px' }, 'Conditions panel (top right)'),
+      field('Show', 'panelOn', chk('panelOn')), field('Location', 'wxLoc', txt('wxLoc', 'City, ST')), field('Temp', 'wxTemp', txt('wxTemp', 'e.g. 27°')),
+      field('Low', 'wxLo', txt('wxLo', 'e.g. 24°')), field('High', 'wxHi', txt('wxHi', 'e.g. 30°')), field('Conditions', 'wxCond', txt('wxCond', 'e.g. Snow Showers/Wind')),
+      field('Rows', 'wxRows', rowsTa),
+      h('p', { class: 'hint' }, 'Type the current observation and forecast values from your source (NWS, your forecast). Nothing is filled in automatically.'));
     const form = h('div', { class: 'lt-form' },
       h('div', { class: 'sec' }, h('h4', {}, 'Quick start'), h('div', { class: 'row lt-presets' }, presetBtns)),
       h('div', { class: 'sec' }, h('h4', {}, 'Text'),
@@ -90,6 +125,7 @@
         field('ALL CAPS', 'caps', chk('caps'))),
       h('div', { class: 'sec' }, h('h4', {}, 'Look'), field('Style', 'style', styleSel), colors.map(c => c[0]),
         h('div', { class: 'btnrow' }, h('button', { class: 'btn sm', onclick: () => { cfg.colors = {}; syncColors(); changed(); } }, 'Reset colours'))),
+      wxSec,
       h('div', { class: 'sec' }, h('h4', {}, 'Ticker'), field('Show ticker', 'tickerOn', chk('tickerOn')), field('Label', 'tickerLabel', txt('tickerLabel', 'LATEST')),
         field('Items', 'ticker', ta), field('Clock (live)', 'clockOn', chk('clockOn')), field('Time zone', 'tz', tz), field('Speed px/s', 'speed', num('speed', 20, 600, 10))),
       h('div', { class: 'sec' }, h('h4', {}, 'Live bug (top left)'), field('Show', 'liveOn', chk('liveOn')), field('Text', 'liveText', txt('liveText', 'LIVE')), field('Location', 'liveLoc', txt('liveLoc', 'CITY, ST'))),
@@ -103,7 +139,7 @@
     const slug = () => (cfg.headline || 'lower-third').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'lower-third';
     async function png(w, hh, tagName) {
       const c = document.createElement('canvas'); c.width = w; c.height = hh;
-      await LT.fontsReady(); LT.draw(c, cfg, { p: 1 });
+      await LT.fontsReady(); await LT.preload(cfg); LT.draw(c, cfg, { p: 1 });
       const blob = await new Promise(r => c.toBlob(r, 'image/png'));
       if (!blob) { toast('PNG export failed.', 'err'); return null; }
       const bmp = await createImageBitmap(blob); const ok = bmp.width === w && bmp.height === hh; bmp.close && bmp.close();
@@ -117,7 +153,7 @@
       const type = window.MediaRecorder && types.find(t => MediaRecorder.isTypeSupported(t));
       if (!type) { toast('This browser cannot record video (MediaRecorder unavailable). Use Chrome or Edge.', 'err'); return; }
       const c = document.createElement('canvas'); c.width = 1920; c.height = 1080;
-      const rp = LT.Player(c, cfg, { autoOut: false }).start();
+      await LT.preload(cfg); const rp = LT.Player(c, cfg, { autoOut: false }).start();
       const stream = c.captureStream(30), rec = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: 12e6 }), chunks = [];
       rec.ondataavailable = e => e.data.size && chunks.push(e.data);
       const done = new Promise(r => { rec.onstop = r; });
@@ -135,6 +171,7 @@
     }
     async function copyUrl() {
       const u = liveUrl();
+      if (u.length > 1.5e6) toast('This URL is very long (' + NS.ui.fmtBytes(u.length) + ') because of the uploaded images. Use smaller images if OBS will not load it.', 'err', 9000);
       try { await navigator.clipboard.writeText(u); toast('Browser-source URL copied. In OBS: Sources → + → Browser, paste it, set 1920×1080.', 'ok', 7000); }
       catch (e) { const inp = h('input', { type: 'text', value: u, readonly: true, style: 'width:560px' }); NS.ui.dialog('Browser-source URL', h('div', {}, h('p', {}, 'Copy this URL into an OBS / vMix browser source (1920×1080):'), inp), null, { onOpen: () => inp.select() }); }
     }

@@ -31,18 +31,18 @@
   size(); addEventListener('resize', size);
   let cfg = readCfg();
   if (!cfg) { msg.hidden = false; msg.textContent = 'No lower third in this link. Build one in the Studio (Lower Thirds) and use "Copy OBS / vMix URL".'; return; }
-  await LT.fontsReady();
+  await LT.fontsReady(); await LT.preload(cfg);
   const player = LT.Player(cv, cfg, { autoOut: q.get('auto') !== '0' }).start();
   window.ltPlayer = player;
   // ?static=1 shows the finished frame with no animation (for capture tools that grab a single frame).
   if (q.get('static') === '1') player.show(); else if (q.get('wait') !== '1') setTimeout(() => player.in(), Math.max(0, +(q.get('delay') || 0.3)) * 1000);
   addEventListener('click', () => player.toggle());
   addEventListener('keydown', e => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); player.toggle(); } if (e.key === 'r') { player.p = 0; player.state = 'off'; player.in(); } });
-  addEventListener('hashchange', () => { const c = readCfg(); if (c) player.cfg = cfg = c; });
+  addEventListener('hashchange', () => { const c = readCfg(); if (c) { LT.preload(c); player.cfg = cfg = c; } });
   // Same-browser remote control from the Studio (Take / Clear / live edits). Does not reach OBS's embedded browser.
   if ('BroadcastChannel' in window) {
     const bc = new BroadcastChannel('nsgs-lowerthirds');
-    bc.onmessage = e => { const d = e.data || {}; if (d.cfg) player.cfg = cfg = d.cfg; if (d.cmd === 'in') player.in(); if (d.cmd === 'out') player.out(); };
+    bc.onmessage = e => { const d = e.data || {}; if (d.cfg) { LT.preload(d.cfg); player.cfg = cfg = d.cfg; } if (d.cmd === 'in') player.in(); if (d.cmd === 'out') player.out(); };
   }
 })();
 </script>
