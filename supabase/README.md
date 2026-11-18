@@ -10,11 +10,22 @@ Supabase (Postgres + Auth + Storage + Realtime) for shared projects, roles, broa
 - let a Graphics Studio migration affect production Sentinel tables and the installed iOS app;
 - mix audit and RLS concerns across two products.
 
-A separate project keeps the blast radius small and lets Graphics Studio stay invite-only. Nothing in this repo has been applied to any hosted project. Creating the project and applying the migration need the owner's authorization.
+A separate project keeps the blast radius small and lets Graphics Studio stay invite-only.
+
+### The hosted project (created 2026-11-18 with the owner's authorization)
+
+| | |
+|---|---|
+| Project | **`nwtt-graphics`**, ref **`meqtsuapaxydmcyjoshn`**, region `us-west-1`, organisation `nationalwildfiretrackingteam's Org` |
+| API URL | `https://meqtsuapaxydmcyjoshn.supabase.co` |
+| Migration | `20261118141634_graphics_studio_phase2` applied 2026-11-18 (the repo file is named to match the hosted migration history, so `supabase db push` won't re-apply it) |
+| Verified after applying | RLS on all 14 tables (22 table + 3 storage policies); `anon` has no table grants and can execute only `bc_output_state` / `bc_output_image`; private `graphics-assets` bucket (20 MB, PNG/JPEG/GIF/WebP); Realtime publication has `broadcast_sessions`, `live_events`, `output_tokens`. Anonymous API checks: every table read denied, `bc_publish` and `gs_me` denied, bad output token refused. 0 users, 0 members. |
+| Advisors | Security: only the by-design findings (signed-in callers can run the role-checking `SECURITY DEFINER` functions; `anon` can run the two token-gated output functions; `rate_limits` has RLS and no policies because it is internal). Performance: 13 unindexed foreign keys and 9 policies that could wrap `auth.uid()` in `(select …)`; not significant at NWTT's scale, a candidate for a follow-up migration (tested locally first). |
+| Still to do in the dashboard | Steps 2, 4 and 6 below: auth settings (**turn off public sign-up**, site URL, SMTP, optional MFA), invite the first administrator, then add `supabase` to `site/config.json`. |
 
 ## What the migration creates
 
-`migrations/20261118000000_graphics_studio_phase2.sql` (one file, all-or-nothing):
+`migrations/20261118141634_graphics_studio_phase2.sql` (one file, all-or-nothing):
 
 | Object | Purpose | Access |
 |---|---|---|
