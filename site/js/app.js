@@ -7,8 +7,9 @@
     ['templates', 'Template Library'], ['assets', 'Asset Library'], ['projects', 'Saved Projects'], ['sep', 'Settings'], ['brand', 'Brand Settings'], ['exports', 'Export Center'], ['sep', 'Tools'], ['ext:plate-builder.html', 'Plate Builder (counties)']
   ];
   // Top-level tabs. Every route not owned by another tab belongs to Graphics Studio (sidebar visible).
-  const TABS = [['studio-home', 'Graphics Studio', '#/dashboard'], ['headlines', 'WX Headlines', '#/headlines'], ['resources', 'Resources', '#/resources']];
-  const tabOf = route => TABS.some(t => t[0] === route) ? route : 'studio-home';
+  const TABS = [['studio-home', 'Graphics Studio', '#/dashboard'], ['headlines', 'WX Headlines', '#/headlines'], ['incidents', 'Incident Detection', '#/incidents']];
+  const TAB_OF = { incident: 'incidents' };   // sub-routes that belong to a top tab
+  const tabOf = route => TAB_OF[route] || (TABS.some(t => t[0] === route) ? route : 'studio-home');
   const main = document.getElementById('main'), nav = document.getElementById('nav'), tabs = document.getElementById('tabs'), appEl = document.getElementById('app');
   const App = NS.App = { editor: null };
   NS.assetMeta = new Map();
@@ -183,7 +184,9 @@
     return root;
   };
   views.headlines = () => NS.HeadlinesView();
-  views.resources = () => NS.ResourcesView();
+  views.incidents = () => NS.IncidentsView();
+  views.incident = key => NS.IncidentPageView(key);
+  views.resources = async () => { location.replace('#/incidents'); return h('div'); }; // old bookmark
   views.exports = async () => {
     const root = h('div', {}, h('h1', {}, 'Export Center'), h('p', { class: 'sub' }, 'Render any saved project at full resolution without opening the editor, and review recent exports. Files are verified (decoded size and transparency) before download.'));
     const ps = (await NS.Store.all('projects').catch(() => [])).sort((a, b) => b.updated - a.updated);
@@ -213,7 +216,7 @@
         if (sessionStorage.getItem('nsgs.openMap') === p.id) { sessionStorage.removeItem('nsgs.openMap'); const m = v.ed.canvas.getObjects().find(o => o.type === 'MapFrame'); if (m) { v.ed.canvas.setActiveObject(m); setTimeout(() => document.getElementById('editMapBtn') && document.getElementById('editMapBtn').click(), 100); } }
         return;
       }
-      const v = views[route] || views.dashboard; const el = await v(); if (my !== seq) return; main.append(el);
+      const v = views[route] || views.dashboard; const el = await v(arg); if (my !== seq) return; main.append(el);
     } catch (e) { main.append(h('div', { class: 'empty' }, 'Something went wrong: ' + e.message)); console.error(e); }
   }
   App.render = render;
