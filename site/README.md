@@ -24,6 +24,7 @@ There are **no server-side environment variables**; the app is fully static.
 | Mapbox **public** token (`pk.…`) | `site/config.json` → `token`, or Brand Settings → Map settings (stored in the browser) | `config.json` wins if both are set. Secret tokens (`sk.…`) are refused. Restrict the token to your site URL in the Mapbox account. |
 | Studio style URL | `site/config.json` → `style` | Enables the "Broadcast dark (Studio style)" basemap. Without it, Dark is the default. |
 | Brand (name, colours, fonts, logos, attribution, export defaults) | Brand Settings | Stored in the browser. Applied to **new** projects created from templates. |
+| Shared cloud (Phase 2, optional) | `site/config.json` → `supabase` (`url`, `anonKey`) | Public anon/publishable key of the **dedicated Graphics Studio** Supabase project. Secret keys are refused. Without it everything stays browser-local. Backend setup: `supabase/README.md`. |
 | Shared brand defaults | `site/config.json` → `brand` (`orgName`, `tagline`, `attribution`, optional `colors`, `fonts`) | Used by every browser that has never saved Brand Settings, so all NWTT broadcasters start with the same branding (currently `NWTT` / `National Wildfire Tracking Team`). Saved Brand Settings still win. Logos can't be set here (they are browser-local assets). |
 
 ## Features (what exists in this build)
@@ -58,6 +59,15 @@ There are **no server-side environment variables**; the app is fully static.
 - **Incident map graphics** (Incident pages → Make map graphic) show `DATA AS OF <time the feeds were fetched>` instead of a rounded "valid" time.
 - **Export:** PNG, JPEG, SVG, transparent PNG, at 0.5×–3× of the canvas size. Exports render from the saved project JSON in an off-screen canvas, **not** from the editor viewport; the output is decoded and verified (size, alpha) before download. Maps are re-rendered natively by a fresh off-screen Mapbox map at the target pixel ratio (labels and lines are drawn at full resolution, not upscaled).
 
+## Phase 2: shared cloud and Live Broadcast Control (optional)
+
+Enabled by `supabase` in `config.json` (see `supabase/README.md`; Sentinel's Supabase project is deliberately not used).
+- **Sign-in and roles (`js/cloud.js`):** invite-only Supabase Auth; roles Administrator, Producer, Graphics Editor, Broadcaster, Viewer, enforced by RLS and server functions. *Team and permissions* lets administrators set roles.
+- **Shared projects (`js/cloudprojects.js`, sidebar → Shared Projects):** a shared project is edited through a linked local copy, so autosave and offline work are unchanged; after each local save it syncs with a version check. Offline or failed syncs are kept as local drafts and retried; conflicts keep both versions. Revisions (every manual save, at most one autosave per 10 min, last 100), approval workflow (submit → producer approves; editing resets approval), shared templates (Template Library → "Share with team") and shared assets (Asset Library). **Local projects are only uploaded when picked in "Upload local projects…" or "Share to cloud"; nothing local is deleted.**
+- **Live Broadcast Control (`js/live.js`, top tab, `#/live`):** sessions; Draft / Preview / Live; Take Live, Update Live, Clear Graphic (all confirmed), rollback, control transfer, output health, audit log, Realtime with polling fallback. Graphics are rendered once by the export engine at Preview, and exactly those pixels go on air. Time-sensitive graphics get an expiry and a lost-contact limit. Editor → **Send to Live**; Incident pages → **Live fact panel** (agency records only, attributed, source timestamps; IPAWS labelled as a delayed archive) and **Start broadcast session**.
+- **OBS output (`broadcast/output.html`, `/broadcast/output/<session>#t=<token>`):** read-only, transparent 1920×1080 Browser Source with fade/cut, sequence ordering, expiry and stale-contact hiding. The token is hashed server-side, expiring, renewable and revocable, and lives in the URL fragment. Operator guide: `docs/live-browser-source.md` (in-app: OBS Setup Guide → Live Graphics tab).
+- Tests: `tests/cloud` (backend RLS suite and cross-computer end-to-end test against a local Supabase stack).
+
 ## Licensing, attribution and usage restrictions
 
 - **Mapbox:** basemap tiles/styles, satellite imagery, terrain DEM and geocoding require a Mapbox token and are subject to Mapbox's Terms of Service. Mapbox requires visible attribution; map frames draw "© Mapbox © OpenStreetMap …" on the graphic by default (toggle in the map's properties — keep it on unless your Mapbox agreement allows removal). Review Mapbox terms for broadcast use and for storing/caching geocoding results.
@@ -68,7 +78,7 @@ There are **no server-side environment variables**; the app is fully static.
 
 ## Persistence: limitations
 
-Projects, templates, assets, brand settings and saved map configurations live in this browser's **IndexedDB**. They survive restarts but are **not shared** between people, browsers or devices and are lost if site data is cleared.
+Projects, templates, assets, brand settings and saved map configurations live in this browser's **IndexedDB**. They survive restarts but are **not shared** between people, browsers or devices and are lost if site data is cleared, unless a project is explicitly shared to the optional Phase 2 cloud (Shared Projects), which then keeps the shared copy and its revisions.
 Use *Saved Projects → Export file* (editable JSON) to move work. Imports keep the project's name (so OBS file names match across computers) unless a project with that name already exists, in which case "(imported)" is appended. The save indicator says "Saved locally" only after IndexedDB confirms the write; failures show "Save failed" with the reason.
 
 ## Tests
@@ -84,7 +94,7 @@ Requires network access to api.mapbox.com, cdnjs, Google Fonts and the public da
 
 ## Known limitations
 
-- Single-user, browser-local storage; no accounts, roles, sharing or activity history (design is ready for it: projects, templates and assets are plain JSON records behind `NS.Store`).
+- Without the Phase 2 cloud: single-user, browser-local storage. With it: one NWTT organisation (not multi-tenant); brand settings and saved map configurations are still per browser.
 - Fonts are loaded from Google Fonts; offline, fallbacks are used and a warning is shown. SVG export does not embed fonts and embeds each map as a raster.
 - Map-frame preview in the editor is rendered at 1× and refreshed when the map or frame changes; the export is always re-rendered at the target resolution. Large exports (e.g. 3× maps) take 10–30 s in software-GL browsers.
 - A rotated or scaled frame renders the map at the frame's unrotated size; resizing a frame keeps the saved map extent (the visible area changes to match the new aspect).
