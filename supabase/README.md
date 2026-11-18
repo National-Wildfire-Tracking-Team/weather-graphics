@@ -1,4 +1,4 @@
-# Graphics Studio cloud backend (Phase 2)
+# Graphics Studio cloud backend (Phase 2 + Phase 3 live map)
 
 Supabase (Postgres + Auth + Storage + Realtime) for shared projects, roles, broadcast sessions and the live OBS output. The site stays a static Netlify deploy: the browser talks to Supabase directly with the **public** anon key, and every permission is enforced in the database (RLS + `SECURITY DEFINER` functions in `migrations/`).
 
@@ -18,7 +18,7 @@ A separate project keeps the blast radius small and lets Graphics Studio stay in
 |---|---|
 | Project | **`nwtt-graphics`**, ref **`meqtsuapaxydmcyjoshn`**, region `us-west-1`, organisation `nationalwildfiretrackingteam's Org` |
 | API URL | `https://meqtsuapaxydmcyjoshn.supabase.co` |
-| Migrations | `20261118141634_graphics_studio_phase2` and `20261118151005_pending_accounts`, both applied 2026-11-18 (repo files are named to match the hosted migration history, so `supabase db push` won't re-apply them) |
+| Migrations | `20261118141634_graphics_studio_phase2`, `20261118151005_pending_accounts` and `20261118175753_broadcast_map` (Phase 3), all applied 2026-11-18 with the owner's authorization (repo files are named to match the hosted migration history, so `supabase db push` won't re-apply them) |
 | Administrator | `kyle@nationalwildfiretrackingteam.org` (bootstrapped 2026-11-18; the only administrator, so the only person who can approve accounts and change roles) |
 | Verified after applying | RLS on all 14 tables (22 table + 3 storage policies); `anon` has no table grants and can execute only `bc_output_state` / `bc_output_image`; private `graphics-assets` bucket (20 MB, PNG/JPEG/GIF/WebP); Realtime publication has `broadcast_sessions`, `live_events`, `output_tokens`. Anonymous API checks: every table read denied, `bc_publish` and `gs_me` denied, bad output token refused. 0 users, 0 members. |
 | Advisors | Security: only the by-design findings (signed-in callers can run the role-checking `SECURITY DEFINER` functions; `anon` can run the two token-gated output functions; `rate_limits` has RLS and no policies because it is internal). Performance: 13 unindexed foreign keys and 9 policies that could wrap `auth.uid()` in `(select …)`; not significant at NWTT's scale, a candidate for a follow-up migration (tested locally first). |
@@ -59,6 +59,21 @@ Neither can change broadcast state.
 **Realtime:**
 - Publishing sends a broadcast message on `nwtt-out-<random channel key>` that carries only the sequence number. The output then fetches state with its token, and polls every ~4 s anyway.
 - The console uses `postgres_changes` on `broadcast_sessions`, `live_events` and `output_tokens`. RLS applies.
+
+## Phase 3: live broadcast map (`20261118175753_broadcast_map.sql`)
+
+Sentinel's Broadcast Mode (`/broadcast` on the Sentinel app) uses **this** project, not Sentinel's own Supabase project: the same accounts, roles, broadcast sessions, controller, audit log and OBS output tokens as Graphics Studio's Live Broadcast Control. Sentinel's production database, its public users and the Mobile app are untouched.
+
+- **`output_tokens.scope`** (`graphics` default, or `map`). `bc_output_state` / `bc_output_image` now accept only graphics tokens; `bc_map_output_state` only map tokens. `bc_issue_output_token` gained an optional 4th argument `p_scope` (existing 3-argument calls behave as before).
+- **`broadcast_map_state`** (one row per session): the live map description (camera, transition, tab, basemap, layers, warning/incident focus, radar playback, model run/time, annotations, on-air labels, fallback card), `version`, `live_control`, `updated_by`, `last_action`. Members of the session can read it (RLS); nobody can write it directly.
+- **`map_presets`**: saved views/layouts/incident presets. Members read; admins, producers and editors create; creators (or admins) edit and delete.
+- **`bc_map_publish(session, state, expected_version, action, live_control)`**: controller only, version-checked (`version_conflict`), shape-validated, own rate budget (600/min per user, for live-control streaming), audited as `map.<action>` (continuous `live` camera moves aren't individually audited), and sends a Realtime nudge `{map_version}` on the session's output channel.
+- **`bc_map_set_live_control(session, on)`**: controller only, audited.
+- **`bc_map_output_state(token, have_version, status, user_agent)`** (anon): the OBS map output's only call. Returns the live map state only when it is newer than what the output has, plus its heartbeat for the console's health display.
+
+Verified after applying (2026-11-18): RLS on all 16 public tables; `anon` has no table grants and can execute only `bc_output_state`, `bc_output_image` and `bc_map_output_state`; `broadcast_map_state` is in the Realtime publication; a bad map token is refused. Security advisors: only the by-design findings listed above. Advisor note: enable **leaked password protection** (Authentication → Policies) in the dashboard.
+
+**Rollback (Phase 3 only)**, run in the SQL editor of *this* project only, never Sentinel's: `drop function public.bc_map_output_state(text,int,text,text), public.bc_map_set_live_control(uuid,boolean), public.bc_map_publish(uuid,jsonb,int,text,boolean), public.bc_map_validate(jsonb); drop table public.map_presets, public.broadcast_map_state;` then restore the Phase 2 `bc_output_state`, `bc_output_image` and 3-argument `bc_issue_output_token` from `20261118141634_graphics_studio_phase2.sql`, and `alter table public.output_tokens drop column scope;`. Map outputs stop at once; graphics outputs keep working. To take Broadcast Mode offline without touching the database, redeploy Sentinel without the `/broadcast` routes, or revoke the map outputs / end the session.
 
 ## Configuration
 

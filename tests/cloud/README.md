@@ -34,11 +34,15 @@ Docker, Node 22 and the pre-installed Playwright Chromium are required.
    node live.e2e.mjs
    ```
 
+   ```bash
+   node map.test.mjs
+   ```
+
 If the Supabase CLI isn't on your PATH as `npx supabase`, set `SUPABASE_CLI=/path/to/supabase`, or provide `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` from `supabase status -o env`.
 
 ## What they cover
 
-- **`backend.test.mjs`** (101 checks), using real Auth, PostgREST, Storage and Realtime:
+- **`backend.test.mjs`** (114 checks), using real Auth, PostgREST, Storage and Realtime:
   - roles and membership, and anonymous/non-member denial
   - RLS on every table
   - shared project editing, locking and optimistic concurrency
@@ -49,7 +53,7 @@ If the Supabase CLI isn't on your PATH as `npx supabase`, set `SUPABASE_CLI=/pat
   - control transfer and administrator override
   - expiry, output-token issue / renew / revoke, output read-only access
   - the Realtime nudge, rate limiting, ending a session, and the audit trail
-- **`live.e2e.mjs`** (53 checks): **Producer on Computer A → Supabase → OBS Browser Output on Computer B**, plus a second producer (C), a viewer, and offline or unconfigured browsers. Each "computer" is an isolated browser context with its own storage and sign-in. It covers:
+- **`live.e2e.mjs`** (63 checks): **Producer on Computer A → Supabase → OBS Browser Output on Computer B**, plus a second producer (C), a viewer, and offline or unconfigured browsers. Each "computer" is an isolated browser context with its own storage and sign-in. It covers:
   - sign-in UI, session creation, Preview, OBS output URL
   - transparent 1920×1080 output with no UI, and Take Live via Realtime (~0.1–0.2 s locally)
   - output health in the console, Update Live with a cut, and fade by default
@@ -61,3 +65,11 @@ If the Supabase CLI isn't on your PATH as `npx supabase`, set `SUPABASE_CLI=/pat
   - refusal of secret keys
 
 No public livestream, OBS installation or Restream account is needed.
+- **`map.test.mjs`** (41 checks), Phase 3 live broadcast map (Sentinel Broadcast Mode):
+  - map state read access (assigned members only, never anonymous) and shape validation (camera, zoom, pitch, ≤ 300 annotations)
+  - controller-only, version-checked publishing; two simultaneous publishes (exactly one wins); first publish marks the session live
+  - live-control mode (controller only), 20 rapid streamed publishes accepted in order
+  - map-scoped OBS outputs: a map token can't read graphics and a graphics token can't read the map; heartbeat and health
+  - the Realtime nudge carries only the map version; control transfer applies to the map; presets permissions; revocation and ending a session
+
+The browser side of Phase 3 (Computer A control center → Computer B OBS output at 1920×1080) lives in the Sentinel repository: `Tests/e2e/broadcast-two-computer.spec.ts`, run against this same local stack (see `docs/broadcast-mode.md` there).
