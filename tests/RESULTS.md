@@ -29,3 +29,9 @@ Local Supabase stack (CLI 2.122.1, Postgres 17, Auth, PostgREST, Storage, Realti
 - `tests/cloud/live.e2e.mjs`: 53 passed, 0 failed on the final runs (Computer A producer → Supabase → Computer B OBS output; C second producer; viewer; offline and unconfigured browsers). One intermittent failure was found while developing ("producer2 sees the controls", about 1 run in 6). Cause: overlapping console refreshes could apply an older response last. Fixed by applying only the newest refresh and never a lower session version; it has passed on every run since.
 - Existing suites (`run-all.sh`, 15 suites): all pass; `tabs` updated for the fourth top tab (Live Broadcast Control).
 Not covered: a hosted Supabase project, OBS's own CEF browser, real email delivery.
+
+## Pending approval + console lifecycle fix (2026-11-18)
+- Backend: pending-approval checks added (admin-only listing, decline, re-approve, audit), 114–115 passed (the last-admin check only runs when the test DB has exactly one admin).
+- End-to-end: 62 passed on every run (7 runs). Adds the administrator UI (pending count, Approve with role, Decline), Request access when self sign-up is off, and unapproved accounts seeing nothing.
+- Fixed a real bug behind the earlier intermittent "producer2 sees the controls" failure: a console built by a superseded render shut down the visible console's Realtime and polling, freezing it. Consoles now start only once attached, clean up only themselves, and the app re-renders on cloud events only when sign-in state or role changes. The new regression test fails on the old code ("Reconnecting (polling)") and passes on the fix.
+- Existing suites touched (tabs 13, app 14, templates 25, obs 43): all pass.

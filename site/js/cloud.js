@@ -63,20 +63,33 @@
     const el = h('div', { id: 'cloudChip', class: 'cloudchip' });
     const draw = () => {
       el.replaceChildren(); el.hidden = C.status === 'off';
-      const st = { loading: ['Cloud: connecting…', ''], offline: ['Cloud: offline', 'warn'], error: ['Cloud: error', 'err'], blocked: ['Cloud: disabled (unsafe key)', 'err'], signedout: ['Cloud: signed out', ''], nomember: ['Cloud: no access', 'warn'], ready: [(C.me && (C.me.display_name || C.me.email)) + ' · ' + ROLE_LABEL[C.role()], 'ok'] }[C.status] || ['', ''];
+      const st = { loading: ['Cloud: connecting…', ''], offline: ['Cloud: offline', 'warn'], error: ['Cloud: error', 'err'], blocked: ['Cloud: disabled (unsafe key)', 'err'], signedout: ['Cloud: signed out', ''], nomember: ['Cloud: awaiting approval', 'warn'], ready: [(C.me && (C.me.display_name || C.me.email)) + ' · ' + ROLE_LABEL[C.role()], 'ok'] }[C.status] || ['', ''];
       el.append(h('span', { class: 'tag ' + st[1], id: 'cloudStatus', title: C.error || '' }, st[0]));
       if (C.status === 'signedout' || C.status === 'nomember') el.append(h('button', { class: 'btn sm', id: 'signInBtn', onclick: () => C.signInDialog() }, C.status === 'nomember' ? 'Switch account' : 'Sign in'));
+      if (C.status === 'ready' && C.can('admin') && C.pendingCount) el.append(h('a', { class: 'tag warn', id: 'pendingChip', href: '#/team', title: 'Accounts waiting for a role' }, C.pendingCount + ' pending approval'));
       if (C.user) el.append(h('button', { class: 'btn sm', id: 'signOutBtn', onclick: () => C.signOut() }, 'Sign out'));
     };
     C.on(draw); draw(); return el;
   };
+  /* ---------- pending approval (administrators) ---------- */
+  C.pending = async function () { const r = await C.client.rpc('gs_pending_accounts'); if (r.error) throw r.error; C.pendingCount = r.data.length; return r.data; };
+  C.on(() => { if (C.status === 'ready' && C.can('admin') && C.pendingCount == null) { C.pendingCount = 0; C.pending().then(() => C.pendingCount && emit()).catch(() => {}); } });
+  /* Request access: creates an account with NO role. It can see nothing until an administrator approves it. */
+  C.requestAccess = async function (email, password) {
+    if (!password || password.length < 8) throw new Error('Choose a password of at least 8 characters.');
+    const r = await C.client.auth.signUp({ email: email.trim(), password, options: { emailRedirectTo: location.origin + location.pathname } });
+    if (r.error) throw (/not allowed|disabled/i.test(r.error.message) ? new Error('Self sign-up is turned off for NWTT Graphics Studio. Ask an administrator to create your account.') : r.error);
+    if (r.data.session) { C.user = r.data.user; await refreshMe(); emit(); return 'signed-in'; }
+    return 'confirm-email';
+  };
   C.signInDialog = async function () {
     if (C.user) await C.signOut();
     const email = h('input', { type: 'email', id: 'loginEmail', autocomplete: 'username', style: 'width:300px', 'aria-label': 'Email' }), pw = h('input', { type: 'password', id: 'loginPassword', autocomplete: 'current-password', style: 'width:300px', 'aria-label': 'Password' }), msg = h('p', { class: 'hint', id: 'loginMsg' });
-    const body = h('div', {}, h('p', { class: 'hint' }, 'Sign in with your NWTT Graphics Studio account. Accounts are created by an administrator; there is no public sign-up.'), h('div', { class: 'prop' }, h('label', {}, 'Email'), email), h('div', { class: 'prop' }, h('label', {}, 'Password'), pw), msg);
+    const body = h('div', {}, h('p', { class: 'hint' }, 'Sign in with your NWTT Graphics Studio account. New here? Enter your email and a password, then Request access: an administrator must approve your account before you can see anything.'), h('div', { class: 'prop' }, h('label', {}, 'Email'), email), h('div', { class: 'prop' }, h('label', {}, 'Password'), pw), msg);
     await NS.ui.dialog('Sign in', body, [{ label: 'Cancel', value: null },
+      { label: 'Request access', onclick: async () => { msg.textContent = 'Requesting access…'; try { const r = await C.requestAccess(email.value, pw.value); msg.textContent = r === 'signed-in' ? 'Account created. It is waiting for an administrator to approve it; you will have access once they give you a role.' : 'Check your email to confirm the address. After that, an administrator must approve your account.'; } catch (e) { msg.textContent = C.msg(e); } return false; } },
       { label: 'Email me a sign-in link', onclick: async () => { try { await C.sendLink(email.value); msg.textContent = 'If that address has an account, a sign-in link is on its way.'; } catch (e) { msg.textContent = C.msg(e); } return false; } },
-      { label: 'Sign in', primary: true, onclick: async () => { msg.textContent = 'Signing in…'; try { const me = await C.signIn(email.value, pw.value); if (!me || !me.role) { msg.textContent = 'Signed in, but this account has no Graphics Studio role yet. Ask an administrator.'; return false; } toast('Signed in as ' + ROLE_LABEL[me.role] + '.', 'ok'); return true; } catch (e) { msg.textContent = C.msg(e); return false; } } }]);
+      { label: 'Sign in', primary: true, onclick: async () => { msg.textContent = 'Signing in…'; try { const me = await C.signIn(email.value, pw.value); if (!me || !me.role) { msg.textContent = 'Signed in, but this account has no access yet: it is waiting for an administrator to approve it.'; return false; } toast('Signed in as ' + ROLE_LABEL[me.role] + '.', 'ok'); return true; } catch (e) { msg.textContent = C.msg(e); return false; } } }]);
   };
 
   /* ---------- Team (administrators manage roles; everyone else sees the list) ---------- */
@@ -92,15 +105,33 @@
     const { data, error } = await C.client.from('org_members').select('*').order('role').order('email');
     if (error) { root.append(h('div', { class: 'tag err' }, C.msg(error))); return root; }
     const isAdmin = C.can('admin');
+    if (isAdmin) root.append(await pendingSection());
     root.append(h('h2', {}, 'Members'), h('table', { class: 't', id: 'teamTable' }, h('thead', {}, h('tr', {}, ['Member', 'Role', 'Active', ''].map(x => h('th', {}, x)))),
       h('tbody', {}, data.map(m => { const sel = h('select', { disabled: !isAdmin, 'aria-label': 'Role for ' + m.email }, Object.keys(ROLE_LABEL).map(r => h('option', { value: r, selected: r === m.role }, ROLE_LABEL[r]))), act = h('input', { type: 'checkbox', checked: m.active, disabled: !isAdmin, 'aria-label': 'Active' });
         return h('tr', {}, h('td', {}, h('b', {}, m.display_name || m.email), h('div', { class: 'hint' }, m.email)), h('td', {}, sel), h('td', {}, act),
           h('td', {}, isAdmin ? h('button', { class: 'btn sm', onclick: async () => { const r = await C.client.rpc('gs_set_member', { p_email: m.email, p_role: sel.value, p_active: act.checked }); r.error ? toast(C.msg(r.error), 'err') : toast('Saved.', 'ok'); } }, 'Save') : null)); }))));
     if (isAdmin) {
       const em = h('input', { type: 'email', placeholder: 'person@example.org', 'aria-label': 'Member email', id: 'teamEmail' }), rl = h('select', { 'aria-label': 'New member role', id: 'teamRole' }, Object.keys(ROLE_LABEL).map(r => h('option', { value: r, selected: r === 'viewer' }, ROLE_LABEL[r])));
-      root.append(h('h2', {}, 'Add a member'), h('p', { class: 'hint' }, 'First invite the person from the Supabase dashboard (Authentication → Users → Invite). Once they have an account, give it a role here.'),
+      root.append(h('h2', {}, 'Add a member'), h('p', { class: 'hint' }, 'For someone who already has an account (they requested access, or you created it in the Supabase dashboard under Authentication → Users). Accounts waiting for a role are listed under Pending approval above.'),
         h('div', { class: 'row' }, em, rl, h('button', { class: 'btn primary', id: 'teamAdd', onclick: async () => { const r = await C.client.rpc('gs_set_member', { p_email: em.value, p_role: rl.value }); if (r.error) toast(C.msg(r.error), 'err'); else { toast('Member added.', 'ok'); NS.App.render(); } } }, 'Add / update')));
     }
     return root;
   };
+  async function pendingSection() {
+    const box = h('div', { id: 'pendingApproval' }, h('h2', {}, 'Pending approval'));
+    let list; try { list = await C.pending(); } catch (e) { box.append(h('div', { class: 'tag err' }, C.msg(e))); return box; }
+    if (!list.length) { box.append(h('p', { class: 'hint' }, 'No accounts are waiting. People can request access from the Sign in dialog; their accounts appear here with no access until you approve them.')); return box; }
+    box.append(h('p', { class: 'hint' }, 'These accounts can sign in but see nothing until you give them a role. Approve only people you know. Decline keeps the account without access (you can still approve it later under Members); delete it in the Supabase dashboard if needed.'),
+      h('table', { class: 't', id: 'pendingTable' }, h('thead', {}, h('tr', {}, ['Account', 'Requested', 'Email confirmed', 'Role', ''].map(x => h('th', {}, x)))),
+        h('tbody', {}, list.map(u => { const sel = h('select', { 'aria-label': 'Role for ' + u.email }, Object.keys(ROLE_LABEL).map(r => h('option', { value: r, selected: r === 'viewer' }, ROLE_LABEL[r])));
+          return h('tr', { 'data-pending': u.email }, h('td', {}, h('b', {}, u.email)), h('td', {}, NS.ui.fmtDate(Date.parse(u.created_at))),
+            h('td', {}, u.email_confirmed ? h('span', { class: 'tag ok' }, 'yes') : h('span', { class: 'tag warn', title: 'They cannot sign in until they confirm their email' }, 'not yet')), h('td', {}, sel),
+            h('td', {}, h('button', { class: 'btn sm primary', 'data-approve-user': u.email, onclick: async () => {
+                if (!(await NS.ui.confirm('Approve account', 'Give ' + u.email + ' the ' + ROLE_LABEL[sel.value] + ' role?' + (sel.value === 'admin' ? ' Administrators can approve other people and change every role.' : ''), 'Approve', sel.value === 'admin'))) return;
+                const r = await C.client.rpc('gs_set_member', { p_email: u.email, p_role: sel.value }); if (r.error) return toast(C.msg(r.error), 'err'); toast(u.email + ' approved as ' + ROLE_LABEL[sel.value] + '.', 'ok'); C.pendingCount = Math.max(0, (C.pendingCount || 1) - 1); emit(); NS.App.render(); } }, 'Approve'),
+              h('button', { class: 'btn sm danger', 'data-decline-user': u.email, onclick: async () => {
+                if (!(await NS.ui.confirm('Decline account', 'Decline ' + u.email + '? The account keeps no access and leaves this list.', 'Decline', true))) return;
+                const r = await C.client.rpc('gs_decline_account', { p_user: u.user_id }); if (r.error) return toast(C.msg(r.error), 'err'); toast('Declined.', 'ok'); C.pendingCount = Math.max(0, (C.pendingCount || 1) - 1); emit(); NS.App.render(); } }, 'Decline'))); }))));
+    return box;
+  }
 })();

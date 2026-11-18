@@ -233,7 +233,7 @@
     TABS.forEach(([id, l, href]) => tabs.append(h('a', { role: 'tab', href, 'data-tab': id, id: 'tab-' + id }, l)));
     NAV.forEach(([id, l]) => nav.append(id === 'sep' ? h('div', { class: 'navsep' }, l) : h('a', Object.assign({ href: id.startsWith('ext:') ? id.slice(4) : '#/' + id, 'data-r': id }, id.startsWith('ext:') ? { target: '_blank', rel: 'noopener' } : {}), l)));
     await NS.loadConfig(); NS.prepareFonts(); NS.assetsReady = loadAssets(); await NS.assetsReady;
-    tabs.append(NS.Cloud.chip()); await NS.Cloud.init(); NS.Cloud.on(() => { if (['live', 'shared', 'team'].includes((location.hash.replace(/^#\//, '').split('/')[0]))) render(); });
+    tabs.append(NS.Cloud.chip()); await NS.Cloud.init(); let cloudKey = NS.Cloud.status + '|' + NS.Cloud.role(); NS.Cloud.on(() => { const k = NS.Cloud.status + '|' + NS.Cloud.role(); if (k === cloudKey) return; cloudKey = k; if (['live', 'shared', 'team'].includes((location.hash.replace(/^#\//, '').split('/')[0]))) render(); });   // re-render only when sign-in state or role changes
     const b = await NS.getBrand(); document.getElementById('orgName').textContent = (b.orgName || 'Newsroom').toUpperCase(); NS.brand = b;
     try { await NS.Store.get('settings', 'brand'); } catch (e) { toast('Browser storage is unavailable: ' + e.message + ' Nothing can be saved.', 'err', 12000); }
     render();

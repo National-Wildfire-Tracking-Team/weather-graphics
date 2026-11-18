@@ -79,6 +79,10 @@ check('A: console shows who changed the live graphic and when', /Last change: ta
 
 // ---------------- Computer C: second producer cannot publish
 const Cc = await computer('C'); await signIn(Cc, 'producer2'); await Cc.page.goto(SITE + 'index.html#/live/' + sessionId); await Cc.page.waitForSelector('#liveStatus');
+// Regression: overlapping re-renders (one superseded before it is attached) must not stop the visible console.
+await Cc.ev(id => NS.Live.view(id), sessionId);   // a console built but never attached (what a superseded render leaves behind)
+await Cc.page.waitForTimeout(3000);
+check('C: visible console keeps its live connection after an orphaned/superseded render', /Realtime connected/.test(await Cc.page.innerText('#liveConn')), await Cc.page.innerText('#liveConn').catch(() => '?'));
 check('C: non-controller producer sees the session but Take Live / Update / Clear are disabled', await Cc.page.isDisabled('#clearLive') && await Cc.page.isDisabled('#updateLive'));
 const cTry = await Cc.ev(async id => (await NS.Cloud.client.rpc('bc_clear', { p_session: id, p_expected_version: NS.Live.debug.state.session.version })).error?.message, sessionId);
 check('C: calling the server directly is refused too (server-side enforcement)', /not the controller/.test(cTry || ''), cTry);
@@ -135,7 +139,7 @@ await A.page.selectOption('#transferTo', U.producer2.id); await A.page.click('#t
 await A.page.waitForFunction(() => /producer2/.test(document.getElementById('liveController').textContent), null, { timeout: 15000 }).catch(() => {});
 check('A: control transferred to producer2; A can no longer clear', /producer2/.test(await A.page.innerText('#liveController')) && await A.page.isDisabled('#clearLive'));
 const tc = Date.now(); await Cc.page.waitForFunction(() => !document.getElementById('clearLive').disabled, null, { timeout: 30000 }).catch(() => {}); console.log('    (C saw the transfer after ' + ((Date.now() - tc) / 1000).toFixed(1) + ' s)');
-check('C: producer2 now has the controls (Realtime update on another computer)', !(await Cc.page.isDisabled('#clearLive')));
+check('C: producer2 now has the controls (Realtime update on another computer)', !(await Cc.page.isDisabled('#clearLive')), await Cc.ev(() => { const st = NS.Live.debug && NS.Live.debug.state.session; return { hash: location.hash, ctl: st && st.controller_id, me: NS.Cloud.user.id, ver: st && st.version, live: st && st.live_revision_id, status: st && st.status, conn: document.getElementById('liveConn') && document.getElementById('liveConn').textContent, dialogs: document.querySelectorAll('dialog').length, clear: document.getElementById('clearLive') && document.getElementById('clearLive').disabled }; }));
 const audit = (await U.admin.c.from('audit_log').select('action').eq('session_id', sessionId)).data.map(x => x.action);
 check('audit trail has preview, take, update, clear, rollback, revoke and transfer', ['graphic.preview', 'live.take', 'live.update', 'live.clear', 'live.rollback', 'output.revoke', 'control.transfer'].every(a => audit.includes(a)), audit);
 
@@ -183,6 +187,32 @@ const B2 = await computer('B2', { viewport: { width: 1920, height: 1080 } }); aw
 await Cc.page.goto(SITE + 'index.html#/live/' + sessionId); await Cc.page.waitForSelector('[data-status="ended"]');
 await Cc.page.click('[data-status="ended"]'); await confirmDlg(Cc.page, 'End session');
 check('ending the session stops its outputs immediately', await waitOut(B2, () => /ended|revoked/.test(window.__nwttOutput.status) && !document.querySelector('#stage img'), null, 15000), await out(B2));
+
+// ---------------- pending approval (administrator UI) and Request access
+const { admin: svc } = await import('./env.mjs');
+const pend = await svc.auth.admin.createUser({ email: 'newperson.' + tag + '@test.nwtt.local', password: PASSWORD, email_confirm: true });
+const pend2 = await svc.auth.admin.createUser({ email: 'stranger.' + tag + '@test.nwtt.local', password: PASSWORD, email_confirm: true });
+const AD = await computer('AD'); await signIn(AD, 'admin');
+await AD.page.waitForSelector('#pendingChip', { timeout: 15000 }).catch(() => {});
+check('admin: top bar shows how many accounts are pending approval', /\d+ pending approval/i.test(await AD.page.innerText('#cloudChip')), await AD.page.innerText('#cloudChip'));
+await AD.page.goto(SITE + 'index.html#/team'); await AD.page.waitForSelector('#pendingTable');
+check('admin: Pending approval lists the new accounts', await AD.page.isVisible(`[data-pending="newperson.${tag}@test.nwtt.local"]`) && await AD.page.isVisible(`[data-pending="stranger.${tag}@test.nwtt.local"]`));
+await AD.page.selectOption(`[data-pending="newperson.${tag}@test.nwtt.local"] select`, 'editor'); await AD.page.click(`[data-approve-user="newperson.${tag}@test.nwtt.local"]`); await confirmDlg(AD.page, 'Approve');
+await AD.page.waitForSelector('#teamTable'); await AD.page.waitForTimeout(800);
+const np = (await svc.from('org_members').select('role,active').eq('user_id', pend.data.user.id).single()).data;
+check('admin: Approve gives the chosen role (Graphics Editor)', np && np.role === 'editor' && np.active, np);
+await AD.page.click(`[data-decline-user="stranger.${tag}@test.nwtt.local"]`); await confirmDlg(AD.page, 'Decline'); await AD.page.waitForTimeout(800);
+const st2 = (await svc.from('org_members').select('role,active').eq('user_id', pend2.data.user.id).single()).data;
+check('admin: Decline leaves the account without access', st2 && st2.active === false, st2);
+check('admin: both left the pending list', !(await AD.page.isVisible(`[data-pending="newperson.${tag}@test.nwtt.local"]`)) && !(await AD.page.isVisible(`[data-pending="stranger.${tag}@test.nwtt.local"]`)));
+const PV = await computer('PV'); await PV.page.goto(SITE + 'index.html#/dashboard'); await PV.page.waitForSelector('#signInBtn', { timeout: 15000 });
+await PV.page.click('#signInBtn'); await PV.page.fill('#loginEmail', 'self.' + tag + '@test.nwtt.local'); await PV.page.fill('#loginPassword', PASSWORD);
+await PV.page.click('dialog[aria-label="Sign in"] button:has-text("Request access")'); await PV.page.waitForFunction(() => !/Requesting/.test(document.getElementById('loginMsg').textContent), null, { timeout: 15000 });
+check('Request access explains when self sign-up is turned off', /Self sign-up is turned off/.test(await PV.page.innerText('#loginMsg')), await PV.page.innerText('#loginMsg'));
+await PV.page.fill('#loginEmail', U.outsider.email); await PV.page.fill('#loginPassword', PASSWORD); await confirmDlg(PV.page, 'Sign in'); await PV.page.waitForTimeout(1500);
+check('signed-in account without a role is told it is waiting for approval', /waiting for an administrator/.test(await PV.page.innerText('#loginMsg')), await PV.page.innerText('#loginMsg'));
+const ex2 = await PV.ev(async () => [(await NS.Cloud.client.from('projects').select('id')).data.length, (await NS.Cloud.client.rpc('gs_pending_accounts')).error ? 'denied' : 'allowed']);
+check('unapproved account sees nothing and cannot list pending accounts', ex2[0] === 0 && ex2[1] === 'denied', ex2);
 
 // ---------------- resilience: cloud unreachable / not configured / secret key
 const D = await b.newContext({ viewport: { width: 1400, height: 900 } });

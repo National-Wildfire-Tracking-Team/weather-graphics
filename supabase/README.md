@@ -18,10 +18,11 @@ A separate project keeps the blast radius small and lets Graphics Studio stay in
 |---|---|
 | Project | **`nwtt-graphics`**, ref **`meqtsuapaxydmcyjoshn`**, region `us-west-1`, organisation `nationalwildfiretrackingteam's Org` |
 | API URL | `https://meqtsuapaxydmcyjoshn.supabase.co` |
-| Migration | `20261118141634_graphics_studio_phase2` applied 2026-11-18 (the repo file is named to match the hosted migration history, so `supabase db push` won't re-apply it) |
+| Migrations | `20261118141634_graphics_studio_phase2` and `20261118151005_pending_accounts`, both applied 2026-11-18 (repo files are named to match the hosted migration history, so `supabase db push` won't re-apply them) |
+| Administrator | `kyle@nationalwildfiretrackingteam.org` (bootstrapped 2026-11-18; the only administrator, so the only person who can approve accounts and change roles) |
 | Verified after applying | RLS on all 14 tables (22 table + 3 storage policies); `anon` has no table grants and can execute only `bc_output_state` / `bc_output_image`; private `graphics-assets` bucket (20 MB, PNG/JPEG/GIF/WebP); Realtime publication has `broadcast_sessions`, `live_events`, `output_tokens`. Anonymous API checks: every table read denied, `bc_publish` and `gs_me` denied, bad output token refused. 0 users, 0 members. |
 | Advisors | Security: only the by-design findings (signed-in callers can run the role-checking `SECURITY DEFINER` functions; `anon` can run the two token-gated output functions; `rate_limits` has RLS and no policies because it is internal). Performance: 13 unindexed foreign keys and 9 policies that could wrap `auth.uid()` in `(select …)`; not significant at NWTT's scale, a candidate for a follow-up migration (tested locally first). |
-| Still to do in the dashboard | Steps 2, 4 and 6 below: auth settings (**turn off public sign-up**, site URL, SMTP, optional MFA), invite the first administrator, then add `supabase` to `site/config.json`. |
+| Still to do in the dashboard | Step 2 below: auth settings (site URL, SMTP, optional MFA, and whether to allow self sign-up: on lets people use **Request access** and appear under Pending approval with no access; off means only accounts you create), then step 6 (`supabase` in `site/config.json`). |
 
 ## What the migration creates
 
@@ -38,6 +39,8 @@ A separate project keeps the blast radius small and lets Graphics Studio stay in
 | `output_tokens` | OBS output credentials: **SHA-256 hash only**, label, expiry (1–72 h), revocation, last seen, last rendered seq | Admin/producer/broadcaster of the session can read; never the token itself |
 | `audit_log` | Every member, approval, preview, publish, clear, rollback, control, output and status action | Admins/producers; session-visible rows for others; no direct writes |
 | `rate_limits` | Fixed-window limits: 60 control actions/min per user, 240 state polls and 60 image fetches/min per output token | Internal |
+
+**Pending approval** (`20261118151005_pending_accounts.sql`): `gs_pending_accounts()` lists accounts with no role, and `gs_decline_account(user)` records an account as an inactive member with no access (reversible). Both are administrator-only and audited (`member.decline`); approval is `gs_set_member` with a role. Accounts can come from **Request access** in the Studio's sign-in dialog, but only while Supabase's "Allow new users to sign up" is on; with it off, the dialog says to ask an administrator.
 
 **Control functions** (granted to `authenticated`):
 - `bc_create_session`, `bc_add_member`, `bc_transfer_control`

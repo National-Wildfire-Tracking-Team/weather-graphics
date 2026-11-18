@@ -256,18 +256,23 @@
 
     try { if (!CP().members.size) await CP().loadMembers(); await load(); await draw(); }
     catch (e) { root.replaceChildren(h('a', { class: 'btn sm', href: '#/live' }, '← Sessions'), h('div', { class: 'empty' }, C.msg(e))); return root; }
-    // Realtime (RLS-filtered) + polling fallback; full state is reloaded on (re)subscribe so nothing is missed.
-    if (L.dispose) L.dispose();   // only one console subscription at a time
-    chan = C.client.channel('console-' + id + '-' + Math.random().toString(36).slice(2, 8))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'broadcast_sessions', filter: 'id=eq.' + id }, refresh)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'live_events', filter: 'session_id=eq.' + id }, refresh)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'output_tokens', filter: 'session_id=eq.' + id }, refresh)
-      .subscribe(st => { rtState = st; if (st === 'SUBSCRIBED') refresh(); setConn(); });
-    const dispose = () => { if (disposed) return; disposed = true; clearInterval(poll); clearTimeout(pending); C.client.removeChannel(chan); imgs.forEach(u => u && URL.revokeObjectURL(u)); if (L.dispose === dispose) L.dispose = null; };
-    L.dispose = dispose;
-    const poll = setInterval(() => { if (!document.body.contains(root)) return dispose(); if (Date.now() - lastOk > 10000) refresh(); else setConn(); }, 5000);
-    window.addEventListener('hashchange', function off() { if (!location.hash.startsWith('#/live/' + id)) { window.removeEventListener('hashchange', off); dispose(); } });
-    L.debug = { state, refresh: () => load().then(draw) };
+    /* Lifecycle. The router can build a view and then discard it (a newer navigation won), so a console only starts
+       Realtime and polling once its own root is actually on the page, never touches another console instance, and
+       cleans itself up when it leaves the page (or if it is never attached). Realtime is RLS-filtered; polling is the
+       fallback, and the full state is reloaded on every (re)subscribe so nothing is missed. */
+    let poll = null, waited = 0;
+    const dispose = () => { if (disposed) return; disposed = true; clearInterval(poll); clearTimeout(pending); if (chan) C.client.removeChannel(chan); imgs.forEach(u => u && URL.revokeObjectURL(u)); };
+    const start = () => {
+      chan = C.client.channel('console-' + id + '-' + Math.random().toString(36).slice(2, 8))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'broadcast_sessions', filter: 'id=eq.' + id }, refresh)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'live_events', filter: 'session_id=eq.' + id }, refresh)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'output_tokens', filter: 'session_id=eq.' + id }, refresh)
+        .subscribe(st => { if (disposed) return; rtState = st; if (st === 'SUBSCRIBED') refresh(); setConn(); });
+      poll = setInterval(() => { if (!root.isConnected) return dispose(); if (Date.now() - lastOk > 10000) refresh(); else setConn(); }, 5000);
+      L.debug = { state, refresh: () => load().then(draw), alive: () => !disposed };
+      refresh();
+    };
+    (function waitAttached() { if (disposed) return; if (root.isConnected) return start(); if ((waited += 100) > 15000) return dispose(); setTimeout(waitAttached, 100); })();
     return root;
   }
 })();

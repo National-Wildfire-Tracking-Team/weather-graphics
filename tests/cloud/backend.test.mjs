@@ -15,6 +15,22 @@ for (const t of ['projects', 'broadcast_sessions', 'audit_log', 'output_tokens',
   r = await anon.from(t).select('*').limit(1); check('anonymous users read nothing from ' + t, !!r.error || r.data.length === 0, r.error && r.error.code);
 }
 r = await U.outsider.c.from('org_members').select('*'); check('non-member sees no member list', !r.error && r.data.length === 0, r);
+// pending approval
+r = await rpc('admin', 'gs_pending_accounts');
+check('administrator sees accounts with no role in Pending approval', !r.error && r.data.some(x => x.email === U.outsider.email) && !r.data.some(x => x.email === U.viewer.email), errOf(r) || r.data.map(x => x.email));
+for (const who of ['producer', 'editor', 'viewer', 'outsider']) { r = await rpc(who, 'gs_pending_accounts'); check(who + ' cannot list pending accounts', !!r.error, r.data); }
+r = await rpc(null, 'gs_pending_accounts'); check('anonymous users cannot list pending accounts', !!r.error);
+r = await rpc('producer', 'gs_decline_account', { p_user: U.outsider.id }); check('only administrators can decline accounts', !!r.error);
+r = await rpc('admin', 'gs_decline_account', { p_user: U.viewer.id }); check('declining an existing member is refused', /already a member/.test(errOf(r) || ''), errOf(r));
+const extra = await admin.auth.admin.createUser({ email: 'pending.' + tag + '@test.nwtt.local', password: 'test-password-not-secret-1', email_confirm: true });
+r = await rpc('admin', 'gs_decline_account', { p_user: extra.data.user.id }); check('administrator declines an account', !r.error, errOf(r));
+r = await rpc('admin', 'gs_pending_accounts'); check('declined account leaves the pending list', !r.data.some(x => x.user_id === extra.data.user.id));
+const ex = anonClient(); await ex.auth.signInWithPassword({ email: 'pending.' + tag + '@test.nwtt.local', password: 'test-password-not-secret-1' });
+r = await ex.rpc('gs_me'); check('declined account still has no role', r.data && r.data.role === null, r.data);
+r = await ex.from('projects').select('id'); check('declined account sees no projects', !r.error && r.data.length === 0);
+r = await rpc('admin', 'gs_set_member', { p_email: 'pending.' + tag + '@test.nwtt.local', p_role: 'viewer', p_active: true }); r = await ex.rpc('gs_me');
+check('a declined account can still be approved later', r.data && r.data.role === 'viewer', r.data);
+r = await U.admin.c.from('audit_log').select('action').in('action', ['member.decline', 'member.set']); check('decline and approval are audited', r.data.some(x => x.action === 'member.decline') && r.data.some(x => x.action === 'member.set'));
 r = await rpc('producer', 'gs_set_member', { p_email: U.viewer.email, p_role: 'admin' }); check('only administrators can change roles', !!r.error, r.data);
 r = await rpc('admin', 'gs_set_member', { p_email: U.outsider.email, p_role: 'viewer', p_active: false }); check('administrator can add a member (inactive)', !r.error, errOf(r));
 r = await rpc('outsider', 'gs_me'); check('inactive member has no role', r.data.role === null, r.data);
