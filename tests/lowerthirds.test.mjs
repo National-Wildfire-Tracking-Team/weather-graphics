@@ -12,13 +12,14 @@ await page.waitForTimeout(400);
 const px = (x, y) => page.evaluate(([x, y]) => Array.from(document.getElementById('ltCanvas').getContext('2d').getImageData(x, y, 1, 1).data), [x, y]);
 check('preview draws the white headline bar', (await px(960, 886))[3] === 255 && (await px(960, 886))[0] > 200, await px(960, 886));
 check('area above the strap stays transparent', (await px(960, 300))[3] === 0);
-for (const st of ['cable', 'cable-red', 'business', 'nameplate', 'weather']) {
+for (const st of ['nwtt-strap', 'nwtt', 'nwtt-name', 'cable', 'cable-red', 'business', 'nameplate', 'weather']) {
   await page.selectOption('#lt-style', st); await page.waitForTimeout(150);
   const a = await px(700, 886);
   check('style ' + st + ' renders', a[3] === 255, a);
   if (SHOTS) await page.locator('#ltStage').screenshot({ path: SHOTS + '/lt-' + st + '.png' });
 }
 await page.click('[data-preset="Breaking news"]'); await page.waitForTimeout(1200);
+if (SHOTS) await page.locator('#ltStage').screenshot({ path: SHOTS + '/lt-nwtt-breaking.png' });
 await page.fill('#lt-headline', 'Storms move into the metro tonight');
 check('editing text persists to localStorage', await page.evaluate(() => JSON.parse(localStorage.getItem('nsgs.lt.current')).headline === 'Storms move into the metro tonight'));
 await page.click('#ltOut'); await page.waitForTimeout(1200);
@@ -38,10 +39,10 @@ const tr = await page.evaluate(async b64 => { const i = new Image(); i.src = 'da
 check('PNG is transparent above the strap and opaque on it', tr[0] === 0 && tr[1] === 255, tr);
 
 // Weather live shot package
-await page.click('[data-preset="Weather live shot"]'); await page.waitForTimeout(1300);
+await page.click('[data-preset="NWTT live shot"]'); await page.waitForTimeout(1300);
 check('weather live shot section shows only for that style', await page.isVisible('#ltWxSec'));
 if (SHOTS) await page.locator('#ltStage').screenshot({ path: SHOTS + '/lt-wxlive-default.png' });
-check('weather live shot draws white headline panel and red crawl', (await px(900, 930))[0] > 200 && (await px(900, 930))[3] === 255 && (await px(1200, 996))[0] > 150 && (await px(1200, 996))[1] < 80, [await px(900, 930), await px(1200, 996)]);
+check('NWTT live shot draws white headline panel and orange crawl', (await px(900, 930))[0] > 200 && (await px(900, 930))[3] === 255 && (await px(1200, 996))[0] > 150 && (await px(1200, 996))[1] < 130 && (await px(1200, 996))[2] < 60, [await px(900, 930), await px(1200, 996)]);
 const mkPng = (w, hh, color) => page.evaluate(([w, hh, color]) => { const c = document.createElement('canvas'); c.width = w; c.height = hh; const x = c.getContext('2d'); x.fillStyle = color; x.fillRect(0, 0, w, hh); x.fillStyle = '#fff'; x.fillRect(w / 4, hh / 4, w / 2, hh / 2); return c.toDataURL('image/png').split(',')[1]; }, [w, hh, color]);
 await page.setInputFiles('#lt-file-boxImg', { name: 'radar.png', mimeType: 'image/png', buffer: Buffer.from(await mkPng(800, 450, '#2a7a3a'), 'base64') });
 await page.waitForTimeout(500);

@@ -20,6 +20,10 @@
 
   // layout: which drawing routine; colors: accent = tag / ticker label, bar = headline bar, strip = sub line.
   const STYLES = {
+    // NWTT (National Wildfire Tracking Team) brand: fire orange #FF5A00 / #B13505, near-black #0A0C0E / #1D1D1F, slate #A9B6C8, flame mark.
+    'nwtt-strap': { name: 'NWTT: news strap', layout: 'cable', brand: 'nwtt', colors: { accent: '#FF5A00', accentText: '#FFFFFF', bar: '#FFFFFF', bar2: '#EEF0F3', barText: '#1D1D1F', strip: '#0A0C0E', stripText: '#FFFFFF', ticker: '#1D1D1F', tickerText: '#FFFFFF' } },
+    nwtt: { name: 'NWTT: live shot (full package)', layout: 'wxlive', brand: 'nwtt', colors: { accent: '#FF5A00', accentText: '#FFFFFF', bar: '#FFFFFF', bar2: '#EEF0F3', barText: '#1D1D1F', strip: '#1D1D1F', stripText: '#FFFFFF', ticker: '#FF5A00', tickerText: '#FFFFFF', panel: 'rgba(10,12,14,0.88)', pill: '#FF5A00', row: '#2A2A2D' } },
+    'nwtt-name': { name: 'NWTT: name / title strap', layout: 'nameplate', brand: 'nwtt', colors: { accent: '#FF5A00', accentText: '#FFFFFF', bar: '#FFFFFF', bar2: '#EEF0F3', barText: '#1D1D1F', strip: '#0A0C0E', stripText: '#FFFFFF', ticker: '#1D1D1F', tickerText: '#FFFFFF' } },
     cable: { name: 'Cable news: white bar', layout: 'cable', colors: { accent: '#CC0000', accentText: '#FFFFFF', bar: '#FFFFFF', bar2: '#E6E6E6', barText: '#111111', strip: '#1B1B1B', stripText: '#FFFFFF', ticker: '#0B0B0B', tickerText: '#FFFFFF' } },
     'cable-red': { name: 'Cable news: red bar', layout: 'cable', colors: { accent: '#111111', accentText: '#FFFFFF', bar: '#D0021B', bar2: '#9E0014', barText: '#FFFFFF', strip: '#FFFFFF', stripText: '#111111', ticker: '#0B0B0B', tickerText: '#FFFFFF' } },
     business: { name: 'Business news: blue', layout: 'business', colors: { accent: '#FFC72C', accentText: '#0A1F44', bar: '#0A2C6B', bar2: '#1257C7', barText: '#FFFFFF', strip: '#FFFFFF', stripText: '#0A1F44', ticker: '#000000', tickerText: '#FFFFFF' } },
@@ -29,24 +33,24 @@
   };
 
   const DEFAULTS = {
-    style: 'cable', tag: 'BREAKING NEWS', headline: 'Headline goes here', sub: 'Supporting line with the key detail', caps: true,
+    style: 'nwtt-strap', tag: 'BREAKING NEWS', headline: 'Headline goes here', sub: 'Supporting line with the key detail', caps: true,
     tickerOn: true, tickerLabel: 'LATEST', ticker: 'Type ticker items here, one per line\nEach line scrolls as its own item',
     clockOn: true, tz: 'ET', liveOn: false, liveText: 'LIVE', liveLoc: '', colors: {}, inDur: 0.9, hold: 0, speed: 140,
     // Weather live shot only
-    reporter: 'REPORTER NAME', reporterTitle: 'Storm Specialist', logoTop: 'WX', logoBottom: 'WEATHER', logoImg: '',
-    boxOn: true, boxTitle: 'WINTER STORM', boxSub: 'LIVE RADAR', boxImg: '',
+    reporter: 'REPORTER NAME', reporterTitle: 'Storm Specialist', logo: 'brand', logoTop: 'WX', logoBottom: 'WEATHER', logoImg: '',
+    boxOn: true, boxTitle: 'ACTIVE FIRES', boxSub: 'LIVE MAP', boxImg: '',
     panelOn: false, wxLoc: 'City, ST', wxTemp: '', wxLo: '', wxHi: '', wxCond: '', wxRows: 'Wind Chill | \nSnow to Come | \nWind | \nVisibility | '
   };
   const TZ = { ET: 'America/New_York', CT: 'America/Chicago', MT: 'America/Denver', PT: 'America/Los_Angeles', AKT: 'America/Anchorage', HT: 'Pacific/Honolulu', UTC: 'UTC', Local: '' };
 
   function norm(cfg) {
-    const c = Object.assign({}, DEFAULTS, cfg || {}); if (!STYLES[c.style]) c.style = 'cable';
+    const c = Object.assign({}, DEFAULTS, cfg || {}); if (!STYLES[c.style]) c.style = 'nwtt-strap';
     const k = Object.assign({}, STYLES[c.style].colors);
     const o = c.colors || {};
     ['accent', 'accentText', 'barText', 'stripText'].forEach(n => { if (o[n]) k[n] = o[n]; });
     if (o.bar) { k.bar = o.bar; k.bar2 = shade(o.bar, c.style === 'business' ? 0.18 : -0.12); }
     if (o.strip) k.strip = o.strip;
-    return { c, k, layout: STYLES[c.style].layout };
+    return { c, k, layout: STYLES[c.style].layout, brand: STYLES[c.style].brand || '' };
   }
 
   /* ---- drawing helpers (all in 1920×1080 units) ---- */
@@ -54,6 +58,20 @@
   function vgrad(ctx, y, h, a, b) { const g = ctx.createLinearGradient(0, y, 0, y + h); g.addColorStop(0, a); g.addColorStop(1, b); return g; }
   function clip(ctx, x, y, w, h, fn) { if (w <= 0 || h <= 0) return; ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip(); fn(); ctx.restore(); }
   function rr(ctx, x, y, w, h, r, fill) { if (w <= 0 || h <= 0) return; r = Math.min(r, w / 2, h / 2); ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); if (fill) { ctx.fillStyle = fill; ctx.fill(); } }
+  // NWTT flame mark (the flame outline used in the NWTT logo, 24×24 path), stroked so it stays sharp at any size.
+  const FLAME = 'M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z';
+  let flamePath = null;
+  function flame(ctx, x, y, size, color) {
+    if (!flamePath && typeof Path2D !== 'undefined') flamePath = new Path2D(FLAME); if (!flamePath) return;
+    ctx.save(); ctx.translate(x, y); ctx.scale(size / 24, size / 24); ctx.strokeStyle = color; ctx.lineWidth = 2.2; ctx.lineCap = ctx.lineJoin = 'round'; ctx.stroke(flamePath); ctx.restore();
+  }
+  // Compact NWTT bug: dark tile, orange flame, NWTT wordmark. h = height in layout units.
+  function nwttBug(ctx, x, y, h, withWord) {
+    const w = withWord ? h * 2.6 : h; rr(ctx, x, y, w, h, h * 0.18, '#0A0C0E');
+    flame(ctx, x + h * 0.16, y + h * 0.14, h * 0.72, '#FF5A00');
+    if (withWord) text(ctx, 'NWTT', x + h * 0.95, y + h / 2, w - h * 1.1, s => fd(800, s), Math.round(h * 0.56), 12, '#FFFFFF');
+    return w;
+  }
   const IMG = new Map();
   function img(src) { if (!src) return null; let i = IMG.get(src); if (!i) { i = new Image(); i.src = src; IMG.set(src, i); } return i.complete && i.naturalWidth ? i : null; }
   function preload(cfg) { return Promise.all([cfg && cfg.logoImg, cfg && cfg.boxImg].filter(Boolean).map(s => { img(s); return IMG.get(s).decode().catch(() => {}); })); }
@@ -93,7 +111,7 @@
   const CHG = /^(.*?)\s+([+\-−]\s?\d[\d.,]*%?)$/;
   function crawlItems(c) { return String(c.ticker || '').split(/\n+/).map(s => s.trim()).filter(Boolean); }
   function crawl(ctx, c, k, o, x0, x1, y, h, font, dot) {
-    const items = crawlItems(c).map(t => c.style === 'wxlive' && c.caps ? t.toUpperCase() : t); if (!items.length) return;
+    const items = crawlItems(c).map(t => o.layout === 'wxlive' && c.caps ? t.toUpperCase() : t); if (!items.length) return;
     clip(ctx, x0, y, x1 - x0, h, () => {
       const gap = 64, parts = items.map(s => { const m = CHG.exec(s); const main = m ? m[1] : s, chg = m ? m[2].replace('−', '-') : ''; const neg = /^-/.test(chg); const ch = chg ? (neg ? '▼ ' : '▲ ') + chg.replace(/^[+-]\s?/, '') : ''; const w = measure(ctx, main, font) + (ch ? 14 + measure(ctx, ch, font) : 0); return { main, ch, neg, w }; });
       const total = parts.reduce((a, b) => a + b.w + gap, 0);
@@ -123,11 +141,12 @@
       const tg = c.tag.toUpperCase(), tw = Math.min(900, measure(ctx, tg, fd(800, 38)) + 44), q = seg(p, 0, 0.3);
       clip(ctx, X, tagY, tw * q, 54, () => { rect(ctx, X, tagY, tw, 54, k.accent); text(ctx, tg, X + 22, tagY + 27, tw - 44, s => fd(800, s), 38, 24, k.accentText); });
     }
-    const qb = seg(p, 0.12, 0.5);
+    const qb = seg(p, 0.12, 0.5), bugW = o.brand === 'nwtt' ? 240 : 0;
     clip(ctx, X, barY, Wd * qb, barH, () => {
       rect(ctx, X, barY, Wd, barH, vgrad(ctx, barY, barH, k.bar, k.bar2));
+      if (bugW) { rect(ctx, R - bugW, barY, bugW, barH, '#0A0C0E'); rect(ctx, R - bugW, barY, 6, barH, k.accent); flame(ctx, R - bugW + 24, barY + 22, 60, '#FF5A00'); text(ctx, 'NWTT', R - bugW + 96, barY + 42, bugW - 112, s => fd(800, s), 52, 24, '#FFFFFF'); text(ctx, 'WILDFIRE TRACKING', R - bugW + 97, barY + 78, bugW - 112, s => fd(600, s), 20, 12, '#A9B6C8'); }
       const qt = seg(p, 0.35, 0.72); ctx.globalAlpha = qt; ctx.translate(0, (1 - qt) * 40);
-      text(ctx, up(c, c.headline), X + 30, barY + barH / 2, Wd - 60, s => fd(800, s), 72, 40, k.barText);
+      text(ctx, up(c, c.headline), X + 30, barY + barH / 2, Wd - 60 - bugW, s => fd(800, s), 72, 40, k.barText);
     });
     if (c.sub) {
       const qs = seg(p, 0.3, 0.66);
@@ -170,6 +189,7 @@
       text(ctx, name, x + 32, y + nh / 2, nw - 64, s => fd(800, s), 62, 36, k.barText);
     });
     if (c.sub) clip(ctx, x, y + nh, tw * seg(p, 0.35, 0.7), th, () => { rect(ctx, x, y + nh, tw, th, k.strip); ctx.globalAlpha = seg(p, 0.5, 0.85); text(ctx, c.sub, x + 24, y + nh + th / 2, tw - 48, s => fs(600, s), 30, 20, k.stripText); });
+    if (!tg && o.brand === 'nwtt') { const q = seg(p, 0.5, 0.82); if (q > 0) { ctx.save(); ctx.globalAlpha = q; nwttBug(ctx, x + nw, y, nh, false); ctx.restore(); } }
     if (tg && gw > 60) clip(ctx, x + nw, y, gw * seg(p, 0.5, 0.82), nh, () => { rect(ctx, x + nw, y, gw, nh, k.accent); text(ctx, tg, x + nw + 20, y + nh / 2, gw - 40, s => fd(700, s), 34, 22, k.accentText); });
     ticker(ctx, c, k, p, o, 996, 48);
   }
@@ -182,10 +202,15 @@
     const ql = seg(p, 0, 0.3);
     if (ql > 0) {
       ctx.save(); ctx.translate(lx + lw / 2, top + bh / 2); ctx.scale(0.6 + 0.4 * ql, 0.6 + 0.4 * ql); ctx.globalAlpha = ql; ctx.translate(-(lx + lw / 2), -(top + bh / 2));
-      rr(ctx, lx, top, lw, bh, 14, '#FFFFFF'); ctx.lineWidth = 4; ctx.strokeStyle = k.strip; ctx.stroke();
-      const li = img(c.logoImg);
+      const li = img(c.logoImg), nw = !li && o.brand === 'nwtt' && c.logo !== 'text';
+      rr(ctx, lx, top, lw, bh, 14, nw ? '#0A0C0E' : '#FFFFFF'); ctx.lineWidth = 4; ctx.strokeStyle = nw ? k.accent : k.strip; ctx.stroke();
       if (li) drawCover(ctx, li, lx + 12, top + 12, lw - 24, bh - 24, true);
-      else {
+      else if (nw) {
+        flame(ctx, lx + lw / 2 - 30, top + 12, 60, '#FF5A00');
+        text(ctx, 'NWTT', lx + 12, top + 104, lw - 24, s => fd(800, s), 64, 30, '#FFFFFF', 'center');
+        text(ctx, 'NATIONAL WILDFIRE', lx + 14, top + 140, lw - 28, s => fd(600, s), 21, 12, '#A9B6C8', 'center');
+        text(ctx, 'TRACKING TEAM', lx + 14, top + 162, lw - 28, s => fd(600, s), 21, 12, '#A9B6C8', 'center');
+      } else {
         text(ctx, String(c.logoTop || '').toUpperCase(), lx + 12, top + 66, lw - 24, s => fd(800, s), 92, 40, k.strip, 'center');
         if (c.logoBottom) { rr(ctx, lx + 12, top + 112, lw - 24, 52, 8, k.accent); text(ctx, String(c.logoBottom).toUpperCase(), lx + 20, top + 138, lw - 40, s => fd(800, s), 44, 22, k.accentText, 'center'); }
       }
@@ -234,21 +259,21 @@
         ctx.restore(); ctx.restore();
       }
     }
-    if (c.panelOn) conditions(ctx, c, k, p);
+    if (c.panelOn) conditions(ctx, c, k, p, o);
   }
-  function conditions(ctx, c, k, p) {
+  function conditions(ctx, c, k, p, o) {
     const q = seg(p, 0.2, 0.6); if (q <= 0) return;
     const rows = String(c.wxRows || '').split(/\n+/).map(l => l.split('|').map(s => s.trim())).filter(r => r[0]).slice(0, 5);
     const w = 400, x = R - w + (1 - q) * (w + 120), y = 36, hh = 320 + rows.length * 76 + 6;
     ctx.save(); ctx.globalAlpha = q;
-    rr(ctx, x, y, w, hh, 24, 'rgba(10,18,40,0.86)');
-    rr(ctx, x + 20, y + 22, w - 40, 66, 33, k.strip); text(ctx, c.wxLoc || '', x + 40, y + 55, w - 80, s => fd(700, s), 42, 24, k.stripText, 'center');
+    rr(ctx, x, y, w, hh, 24, k.panel || 'rgba(10,18,40,0.86)');
+    rr(ctx, x + 20, y + 22, w - 40, 66, 33, k.pill || k.strip); text(ctx, c.wxLoc || '', x + 40, y + 55, w - 80, s => fd(700, s), 42, 24, k.stripText, 'center');
     if (c.wxTemp) text(ctx, c.wxTemp, x + 90, y + 170, w - 180, s => fd(700, s), 132, 60, '#FFFFFF', 'center');
     if (c.wxLo) text(ctx, '▼ ' + c.wxLo, x + 18, y + 158, 100, s => fd(700, s), 40, 22, '#FFFFFF', 'center');
     if (c.wxHi) text(ctx, '▲ ' + c.wxHi, x + w - 118, y + 158, 100, s => fd(700, s), 40, 22, '#FFFFFF', 'center');
     if (c.wxCond) text(ctx, c.wxCond, x + 20, y + 268, w - 40, s => fd(600, s), 40, 22, '#FFFFFF', 'center');
     rows.forEach((r, i) => {
-      const ry = y + 314 + i * 76; rr(ctx, x + 20, ry, w - 40, 62, 31, shade(k.strip, -0.1));
+      const ry = y + 314 + i * 76; rr(ctx, x + 20, ry, w - 40, 62, 31, k.row || shade(k.strip, -0.1));
       text(ctx, r[0], x + 46, ry + 31, (w - 92) * 0.6, s => fd(600, s), 36, 20, '#FFFFFF');
       if (r[1]) text(ctx, r[1], x + 46 + (w - 92) * 0.45, ry + 31, (w - 92) * 0.55, s => fd(800, s), 36, 20, '#FFFFFF', 'right');
     });
@@ -262,7 +287,7 @@
     ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, canvas.width, canvas.height);
     if (o.background) { ctx.fillStyle = o.background; ctx.fillRect(0, 0, canvas.width, canvas.height); }
     if (p <= 0) return;
-    const { c, k, layout } = norm(cfg);
+    const { c, k, layout, brand } = norm(cfg); o = Object.assign({}, o, { brand, layout });
     ctx.setTransform(s, 0, 0, canvas.height / H, 0, 0);
     LAYOUTS[layout](ctx, c, k, p, o); liveBug(ctx, c, k, p);
     ctx.setTransform(1, 0, 0, 1, 0, 0);

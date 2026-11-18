@@ -11,13 +11,13 @@
 
   // One-click starting points. They only fill in text and style; nothing here is real news.
   const PRESETS = [
-    ['Breaking news', { style: 'cable', tag: 'BREAKING NEWS', headline: 'Headline goes here', sub: 'Supporting line with the key detail', tickerOn: true, tickerLabel: 'LATEST', liveOn: false }],
-    ['Developing story', { style: 'cable-red', tag: 'DEVELOPING STORY', headline: 'Headline goes here', sub: 'What we know right now', tickerOn: true, tickerLabel: 'LATEST', liveOn: false }],
-    ['Live report', { style: 'cable', tag: 'HAPPENING NOW', headline: 'Headline goes here', sub: 'Reporter name · Location', liveOn: true, liveText: 'LIVE', liveLoc: 'CITY, ST', tickerOn: true }],
-    ['Guest / interview', { style: 'nameplate', tag: '', headline: 'Guest Name', sub: 'Title, Organization', tickerOn: false, liveOn: false }],
-    ['Markets', { style: 'business', tag: 'MARKETS', headline: 'Headline goes here', sub: 'Supporting line with the key detail', tickerOn: true, tickerLabel: 'MARKETS', ticker: 'SYMBOL 100.00 +1.25\nSYMBOL 100.00 -0.50\nType your own items: name, value, then +/- change', liveOn: false }],
-    ['Weather live shot', { style: 'wxlive', tag: 'NOW:', headline: 'Headline goes here', sub: 'Supporting line with the key detail', reporter: 'Reporter Name', reporterTitle: 'Storm Specialist', tickerOn: true, tickerLabel: 'WEATHER WIRE', liveText: 'LIVE', liveOn: false, boxOn: true, boxTitle: 'WINTER STORM', boxSub: 'LIVE RADAR' }],
-    ['Weather alert', { style: 'weather', tag: 'WEATHER ALERT', headline: 'Alert headline goes here', sub: 'Counties / area · Until time', tickerOn: true, tickerLabel: 'ALERTS', liveOn: false }]
+    ['Breaking news', { style: 'nwtt-strap', tag: 'BREAKING NEWS', headline: 'Headline goes here', sub: 'Supporting line with the key detail', tickerOn: true, tickerLabel: 'LATEST', liveOn: false }],
+    ['Fire update', { style: 'nwtt-strap', tag: 'FIRE UPDATE', headline: 'Fire name: headline goes here', sub: 'County, ST · Acres · Containment (from the incident report)', tickerOn: true, tickerLabel: 'ACTIVE FIRES', liveOn: false }],
+    ['Live report', { style: 'nwtt-strap', tag: 'HAPPENING NOW', headline: 'Headline goes here', sub: 'Reporter name · Location', liveOn: true, liveText: 'LIVE', liveLoc: 'CITY, ST', tickerOn: true }],
+    ['Guest / interview', { style: 'nwtt-name', tag: '', headline: 'Guest Name', sub: 'Title, Organization', tickerOn: false, liveOn: false }],
+    ['NWTT live shot', { style: 'nwtt', tag: 'NOW:', headline: 'Headline goes here', sub: 'Supporting line with the key detail', reporter: 'Reporter Name', reporterTitle: 'Role', logo: 'brand', tickerOn: true, tickerLabel: 'NWTT WIRE', liveText: 'LIVE', liveOn: false, boxOn: true, boxTitle: 'ACTIVE FIRES', boxSub: 'LIVE MAP' }],
+    ['Weather alert', { style: 'nwtt-strap', tag: 'WEATHER ALERT', headline: 'Alert headline goes here', sub: 'Counties / area · Until time', tickerOn: true, tickerLabel: 'ALERTS', liveOn: false }],
+    ['Generic cable', { style: 'cable', tag: 'BREAKING NEWS', headline: 'Headline goes here', sub: 'Supporting line with the key detail', tickerOn: true, tickerLabel: 'LATEST', liveOn: false }]
   ];
 
   NS.LowerThirdsView = async function () {
@@ -68,7 +68,7 @@
     const labHead = h('span'), labSub = h('span'), labTag = h('span');
     function syncLabels() {
       const np = LT.STYLES[cfg.style].layout === 'nameplate';
-      const wx = cfg.style === 'wxlive';
+      const wx = LT.STYLES[cfg.style].layout === 'wxlive';
       labHead.textContent = np ? 'Name' : 'Headline'; labSub.textContent = np ? 'Title' : 'Sub line'; labTag.textContent = np ? 'Side box' : wx ? 'Red prefix' : 'Tag';
       if (typeof wxSec !== 'undefined') wxSec.hidden = !wx;
     }
@@ -103,11 +103,12 @@
         h('button', { class: 'btn sm', onclick: () => { set(key, ''); st.textContent = 'None'; } }, 'Clear'), st));
     }
     const rowsTa = h('textarea', { rows: 5, placeholder: 'Label | value, one per line (max 5)', style: 'width:100%;resize:vertical' }); rowsTa.value = cfg.wxRows || '';
-    const wxSec = h('div', { class: 'sec', id: 'ltWxSec' }, h('h4', {}, 'Weather live shot'),
+    const wxSec = h('div', { class: 'sec', id: 'ltWxSec' }, h('h4', {}, 'Live shot package'),
       field('Reporter', 'reporter', txt('reporter', 'Reporter Name')), field('Role', 'reporterTitle', txt('reporterTitle', 'Storm Specialist')),
+      field('Logo', 'logo', h('select', {}, h('option', { value: 'brand', selected: cfg.logo !== 'text' }, 'NWTT flame logo (NWTT styles)'), h('option', { value: 'text', selected: cfg.logo === 'text' }, 'Two text lines'))),
       field('Logo line 1', 'logoTop', txt('logoTop', 'WX')), field('Logo line 2', 'logoBottom', txt('logoBottom', 'WEATHER')),
       imagePicker('logoImg', 'Logo image', 400, 400, true),
-      h('p', { class: 'hint' }, 'A logo image replaces the two logo lines. Use a PNG with transparency.'),
+      h('p', { class: 'hint' }, 'An uploaded image replaces the built-in logo. Use a PNG with transparency.'),
       field('Right box', 'boxOn', chk('boxOn')), field('Box title', 'boxTitle', txt('boxTitle', 'WINTER STORM')), field('Box strip', 'boxSub', txt('boxSub', 'LIVE RADAR')),
       imagePicker('boxImg', 'Box image', 640, 360, false),
       h('p', { class: 'hint' }, 'E.g. a radar or map screenshot (export one from Map Studio).'),
