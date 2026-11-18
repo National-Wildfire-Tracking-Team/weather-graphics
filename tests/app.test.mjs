@@ -1,4 +1,4 @@
-import { launch, check, summary } from './lib.mjs';
+import { launch, check, summary, clickDownload } from './lib.mjs';
 import fs from 'fs';
 const { b, ctx, page, errs } = await launch();
 const ev = (fn, arg) => page.evaluate(fn, arg);
@@ -38,7 +38,7 @@ const [fc3] = await Promise.all([page.waitForEvent('filechooser'), page.click('#
 check('project file re-imports as a new project', await page.locator('#projGrid .tile').count() === nBefore + 1);
 // export center
 await page.click('#nav a[data-r=exports]'); await page.waitForSelector('#exportOpen'); await page.click('#exportOpen'); await page.waitForSelector('#renderPreview'); await page.click('#renderPreview'); await page.waitForSelector('#exportDownload:not([disabled])', { timeout: 20000 });
-const [d2] = await Promise.all([page.waitForEvent('download'), page.click('#exportDownload')]); const buf = fs.readFileSync(await d2.path()); check('Export Center renders a project at full size', buf.readUInt32BE(16) === 1920 && buf.readUInt32BE(20) === 1080);
+const d2 = await clickDownload(page, '#exportDownload'); const buf = fs.readFileSync(await d2.path()); check('Export Center renders a project at full size', buf.readUInt32BE(16) === 1920 && buf.readUInt32BE(20) === 1080);
 await page.keyboard.press('Escape'); await page.click('#nav a[data-r=exports]'); await page.waitForTimeout(400);
 check('export history recorded', await page.locator('table.t tbody tr').count() >= 1);
 // dashboard shows recent

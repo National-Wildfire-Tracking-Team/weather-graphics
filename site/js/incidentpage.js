@@ -222,7 +222,7 @@
         const brand = await NS.getBrand(), w = c.fires.find(f => f.src === 'wfigs'), pa = st.per.features[0].properties.poly_GISAcres;
         const p = await NS.Templates.alertGraphic(brand, { title: c.name.toUpperCase(), subtitle: [fmtPlace(c), pa ? I.fmt.acres(pa) + ' mapped' : null, w && w.contained != null ? w.contained + '% contained' : null].filter(Boolean).join(' · '),
           accent: '#F2453D', style: NS.config.style ? 'broadcast' : 'dark', extent: extentOf(st.per, c), projection: 'mercator', layerId: 'nifc-fire', layerCfg: {}, data: st.per,
-          source: 'NIFC / WFIGS Interagency Fire Perimeters', category: 'news', templateId: 'incident-perimeter' });
+          source: 'NIFC / WFIGS Interagency Fire Perimeters', category: 'news', templateId: 'incident-perimeter', asOf: I.cache.at || Date.now() });
         p.name = c.name + ' perimeter'; await NS.App.createProject(p);
       } catch (e) { toast('Could not create the graphic: ' + e.message, 'err', 9000); if (b) { b.disabled = false; b.textContent = 'Make map graphic'; } }
     }

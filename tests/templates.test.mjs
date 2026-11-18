@@ -45,7 +45,7 @@ check('project saved as reusable template', await ev(async () => (await NS.Store
 check('built-in template unchanged after editing project', await ev(async () => JSON.stringify(NS.Templates.list.find(t => t.id === 'wx-7day').build(await NS.getBrand()).objects).length) === origText);
 await page.click('#backBtn'); await page.waitForTimeout(600); await page.click('#nav a[data-r=templates]'); await page.waitForSelector('#tplGrid .tile'); 
 check('user template listed in library', await page.locator('#tplGrid .tile:has-text("My 7-day")').count() === 1);
-await page.click('#tplGrid .tile:has-text("My 7-day") >> text=Duplicate'); await page.waitForTimeout(500);
+await page.click('#tplGrid .tile:has-text("My 7-day") >> text=Duplicate'); await page.locator('#tplGrid .tile:has-text("My 7-day (copy)")').waitFor({ timeout: 10000 }).catch(() => {});
 check('template duplicated', await page.locator('#tplGrid .tile:has-text("My 7-day (copy)")').count() === 1);
 const tid = await ev(async () => (await NS.Store.all('templates')).find(t => t.name === 'My 7-day').id);
 await ev((id) => NS.App.newFromTemplate(id), tid); await page.waitForSelector('#workspace canvas'); await page.waitForTimeout(1000);

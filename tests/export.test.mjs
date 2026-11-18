@@ -1,11 +1,11 @@
-import { launch, check, summary } from './lib.mjs';
+import { launch, check, summary, clickDownload } from './lib.mjs';
 import fs from 'fs';
 const dpr = +(process.env.DPR || 1);
 const { b, page, errs } = await launch({ dpr });
 const ev = (fn, arg) => page.evaluate(fn, arg);
 console.log('Export (device pixel ratio ' + dpr + ')');
 function pngInfo(buf) { return { w: buf.readUInt32BE(16), h: buf.readUInt32BE(20), colorType: buf[25] }; }
-async function download(clickSel) { const [d] = await Promise.all([page.waitForEvent('download'), page.click(clickSel)]); const p = await d.path(); return { name: d.suggestedFilename(), buf: fs.readFileSync(p) }; }
+async function download(clickSel) { const d = await clickDownload(page, clickSel); const p = await d.path(); return { name: d.suggestedFilename(), buf: fs.readFileSync(p) }; }
 // project with full-bleed rect + edge text
 await page.click('#nav a[data-r=studio]'); await page.click('text=Full HD 1920 × 1080'); await page.waitForSelector('#workspace canvas'); await page.waitForTimeout(600);
 await ev(() => { const e = NS.App.editor.ed; e.addShape('rect', { left: 0, top: 0, width: 1920, height: 1080, fill: '#ff0000', rx: 0, ry: 0 }); e.addText('EDGE', { left: 1700, top: 960, fontSize: 90, fill: '#00ff00', width: 220 }); e.canvas.discardActiveObject(); e.commit(); });

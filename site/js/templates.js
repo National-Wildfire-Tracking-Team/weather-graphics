@@ -52,6 +52,7 @@
     legend: { key: 'legend', label: 'Show legend', type: 'checkbox' }, accent: { key: 'accent', label: 'Accent color', type: 'color' },
     tempUnit: { key: 'tempUnit', label: 'Temperature units', type: 'setting', options: [['F', '°F'], ['C', '°C']] }, windUnit: { key: 'windUnit', label: 'Wind units', type: 'setting', options: [['mph', 'mph'], ['kt', 'knots'], ['kmh', 'km/h']] }
   };
+  const localIso = t => { const d = new Date(t), p = n => String(n).padStart(2, '0'); return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes()); };
   const isoNow = () => { const d = new Date(); d.setMinutes(0, 0, 0); const p = n => String(n).padStart(2, '0'); return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':00'; };
 
   /* ---------- layout builders ---------- */
@@ -59,7 +60,7 @@
     return (brand) => {
       const c = ctx(brand, 1920, 1080);
       c.map(0, 0, 1920, 1080, { view: cfg.view, style: cfg.style || 'broadcast', layers: cfg.layers, toggles: cfg.toggles, padTop: 150, padBottom: 60 });
-      c.header({ title: cfg.title, subtitle: cfg.subtitle, validKey: 'validTime' });
+      c.header({ title: cfg.title, subtitle: cfg.subtitle, validKey: 'validTime', validTpl: cfg.validTpl });
       if (cfg.legend) { const sp = NS.Charts.defaults('legend'); Object.assign(sp, NS.Charts.PRESETS[cfg.legend], { w: 520, textColor: c.ink, font: brand.fonts.body }); c.rect(24, 1080 - 40 - 24 - 118, 568, 118, { fill: c.navy, opacity: 0.85, name: 'Legend panel', showIf: 'legend' }).showIf = 'legend'; const g = c.chart(sp, 48, 1080 - 40 - 24 - 108); g.showIf = 'legend'; }
       if (cfg.panel) { cfg.panel(c); }
       c.footer({});
@@ -151,8 +152,11 @@
       c.rect(160, 460, 220, 8, { fill: c.acc, role: 'accent', name: 'Rule' });
       c.text(cfg.title, 160, 500, 1500, { size: cfg.size || 140, weight: 800, fill: c.ink, key: 'title', fmt: 'upper', name: 'Title', lh: 0.95 });
       c.text(cfg.sub, 164, 790, 1400, { size: 46, weight: 500, fill: c.muted, key: 'subtitle', name: 'Subtitle', family: brand.fonts.body });
-      c.org(160, 120, 800, 40, 'left', c.ink); c.logo(1920 - 460, 90, 120); c.sample(160, 1000);
-      return finish(c, { canvas: { w: 1920, h: 1080, bg: { transparent: false, color: cfg.bg || c.navy } }, fields: { title: cfg.title, subtitle: cfg.sub, org: brand.orgName }, fieldDefs: [F.title, F.subtitle] });
+      c.org(160, 120, 800, 40, 'left', c.ink); c.logo(1920 - 460, 90, 120); if (cfg.sample !== false) c.sample(160, 1000);
+      const fields = { title: cfg.title, subtitle: cfg.sub, org: brand.orgName }, defs = [F.title, F.subtitle];
+      if (cfg.tagline && brand.tagline) c.text(brand.tagline.toUpperCase(), 160, 172, 1200, { size: 26, weight: 600, fill: c.muted, name: 'Tagline', family: brand.fonts.body, cs: 60 });
+      if (cfg.note != null) { c.text(cfg.note, 164, 930, 1500, { size: 30, weight: 600, fill: c.ink, key: 'note', name: 'Note', family: brand.fonts.body }); fields.note = cfg.note; defs.push({ key: 'note', label: 'Bottom line', type: 'text' }); }
+      return finish(c, { canvas: { w: 1920, h: 1080, bg: { transparent: false, color: cfg.bg || c.navy } }, fields, fieldDefs: defs });
     };
   }
   function quoteCard(cfg) {
@@ -180,14 +184,16 @@
   function listGraphic(cfg) {   // closures / road closures / evacuation list
     return (brand) => {
       const c = ctx(brand, 1920, 1080); c.rect(0, 0, 1920, 1080, { fill: c.land, name: 'Background' });
-      c.header({ title: cfg.title, subtitle: cfg.sub, validKey: 'validTime' });
-      const fields = { title: cfg.title, subtitle: cfg.sub, validTime: isoNow(), accent: c.acc, org: brand.orgName }, defs = [F.title, F.subtitle, F.validTime];
+      c.header({ title: cfg.title, subtitle: cfg.sub, validKey: 'validTime', validTpl: cfg.validTpl });
+      const fields = { title: cfg.title, subtitle: cfg.sub, validTime: cfg.blankTime ? '' : isoNow(), accent: c.acc, org: brand.orgName }, defs = [F.title, F.subtitle, cfg.validTpl ? { key: 'validTime', label: 'As of (official time)', type: 'datetime' } : F.validTime];
       for (let i = 0; i < cfg.rows; i++) { const y = 170 + i * 118; c.rect(48, y, 1824, 100, { fill: c.navy, opacity: 0.92, name: 'Row ' + (i + 1) }); c.rect(48, y, 10, 100, { fill: c.acc, role: 'accent', name: 'Row rule' });
         c.text('', 84, y + 14, 1000, { size: 50, weight: 800, fill: c.ink, key: 'r' + i + 'a', fmt: 'upper', name: 'Name' }); c.text('', 84, y + 64, 1000, { size: 28, weight: 500, fill: c.muted, key: 'r' + i + 'b', name: 'Detail', family: brand.fonts.body });
         c.text('', 1200, y + 26, 640, { size: 46, weight: 700, fill: c.warn, align: 'right', key: 'r' + i + 'c', fmt: 'upper', name: 'Status' });
         fields['r' + i + 'a'] = cfg.sampleRows ? cfg.sampleRows[0] + ' ' + (i + 1) : ''; fields['r' + i + 'b'] = cfg.sampleRows ? cfg.sampleRows[1] : ''; fields['r' + i + 'c'] = cfg.sampleRows ? cfg.sampleRows[2] : '';
+        if (i === 0 && cfg.firstRow) [fields.r0a, fields.r0b, fields.r0c] = cfg.firstRow;
         defs.push({ key: 'r' + i + 'a', label: 'Row ' + (i + 1) + ' name', type: 'text' }, { key: 'r' + i + 'b', label: 'Row ' + (i + 1) + ' detail', type: 'text' }, { key: 'r' + i + 'c', label: 'Row ' + (i + 1) + ' status', type: 'text' }); }
-      c.sample(48, 1080 - 56);
+      if (cfg.source != null) { c.footer({}); fields.source = cfg.source; fields.attribution = true; defs.push(F.source, F.attribution); }
+      if (cfg.sample !== false) c.sample(48, 1080 - 56);
       return finish(c, { canvas: { w: 1920, h: 1080, bg: { transparent: false, color: c.land }, titleBar: 140 }, fields, fieldDefs: defs.concat([F.accent]) });
     };
   }
@@ -220,6 +226,47 @@
     };
   }
   const incidentMap = (cfg) => mapGraphic(Object.assign({ view: 'Lower 48', style: 'broadcast', legend: null, sample: true, panel: c => { c.rect(1920 - 520, 160, 496, 150, { fill: c.navy, opacity: 0.9, name: 'Info panel' }); c.text('', 1920 - 500, 174, 456, { size: 40, weight: 800, fill: c.acc, role: 'accent', key: 'location', fmt: 'upper', name: 'Location' }); c.text('', 1920 - 500, 226, 456, { size: 26, weight: 500, fill: c.ink, key: 'detail', name: 'Detail', family: 'Barlow' }); }, fields: { location: 'Location', detail: 'Describe the incident' }, defs: [{ key: 'location', label: 'Location', type: 'text' }, { key: 'detail', label: 'Detail', type: 'textarea' }] }, cfg));
+
+  /* ---------- NWTT live-production overlays (transparent, 1920×1080, kept inside the 5% action-safe area) ----------
+     No sample data: every value the broadcaster must supply is a [bracketed] placeholder or an empty time field, and export
+     asks for confirmation while any remain (NS.Export.readiness). */
+  const asOfDef = { key: 'asOf', label: 'As of (time of the official information)', type: 'datetime' }, srcDef = { key: 'source', label: 'Source (agency / product)', type: 'text' };
+  function incidentUpdate() {   // full-width lower band: UPDATE tag, incident, update line, as-of + source
+    return (brand) => {
+      const c = ctx(brand, 1920, 1080), y = 834, h = 150;
+      c.rect(0, y, 1920, h, { fill: c.navy, opacity: 0.94, name: 'Band' }); c.rect(0, y, 1920, 5, { fill: c.acc, role: 'accent', name: 'Band rule' });
+      c.rect(96, y + 24, 250, 56, { fill: c.acc, role: 'accent', name: 'Tag plate' }); c.text('', 96, y + 30, 250, { size: 40, weight: 800, fill: c.navy, align: 'center', key: 'tag', fmt: 'upper', name: 'Tag', cs: 40 });
+      c.text('', 372, y + 20, 1000, { size: 56, weight: 800, fill: c.ink, key: 'incident', fmt: 'upper', name: 'Incident' });
+      c.text('', 96, y + 92, 1300, { size: 32, weight: 500, fill: c.ink, key: 'update', name: 'Update line', family: brand.fonts.body });
+      c.text('', 1400, y + 30, 424, { size: 28, weight: 700, fill: c.warn, align: 'right', key: 'asOf', fmt: 'datetime', tpl: 'AS OF {v}', name: 'As of', family: brand.fonts.body });
+      c.text('', 1400, y + 98, 424, { size: 24, weight: 500, fill: c.muted, align: 'right', key: 'source', tpl: 'SOURCE: {v}', name: 'Source', family: brand.fonts.body });
+      const fields = { tag: 'UPDATE', incident: '[INCIDENT NAME]', update: '[Latest official update, in one line]', asOf: '', source: '[AGENCY]', org: brand.orgName };
+      return finish(c, { canvas: { w: 1920, h: 1080, bg: { transparent: true, color: '#00000000' } }, fields, fieldDefs: [{ key: 'tag', label: 'Tag', type: 'text' }, { key: 'incident', label: 'Incident name', type: 'text' }, { key: 'update', label: 'Update line', type: 'textarea' }, asOfDef, srcDef] });
+    };
+  }
+  function fireFacts() {        // right-side fact panel for wildfire coverage over a map
+    return (brand) => {
+      const c = ctx(brand, 1920, 1080), x = 1392, y = 96, w = 432;
+      c.rect(x, y, w, 530, { fill: c.navy, opacity: 0.92, name: 'Fact panel' }); c.rect(x, y, w, 6, { fill: c.acc, role: 'accent', name: 'Panel rule' });
+      c.text('', x + 24, y + 22, w - 48, { size: 48, weight: 800, fill: c.acc, role: 'accent', key: 'fireName', fmt: 'upper', name: 'Fire name', lh: 1 });
+      const rows = [['SIZE', 'acres'], ['CONTAINMENT', 'containment'], ['LOCATION', 'location'], ['EVACUATIONS', 'evac']];
+      rows.forEach((r, i) => { const yy = y + 104 + i * 70; c.text(r[0], x + 24, yy, w - 48, { size: 20, weight: 600, fill: c.muted, family: brand.fonts.body, name: r[0] + ' label', cs: 40 }); c.text('', x + 24, yy + 24, w - 48, { size: 32, weight: 700, fill: c.ink, key: r[1], name: r[0] }); });
+      c.text('', x + 24, y + 446, w - 48, { size: 24, weight: 700, fill: c.warn, key: 'asOf', fmt: 'datetime', tpl: 'AS OF {v}', name: 'As of', family: brand.fonts.body });
+      c.text('', x + 24, y + 482, w - 48, { size: 20, weight: 500, fill: c.muted, key: 'source', tpl: 'SOURCE: {v}', name: 'Source', family: brand.fonts.body });
+      const fields = { fireName: '[FIRE NAME]', acres: '[acres, as reported]', containment: '[% contained, or "Not reported"]', location: '[County, State]', evac: '[Orders / warnings, or "None reported"]', asOf: '', source: '[AGENCY, e.g. CAL FIRE / NIFC]', org: brand.orgName };
+      return finish(c, { canvas: { w: 1920, h: 1080, bg: { transparent: true, color: '#00000000' } }, fields, fieldDefs: [{ key: 'fireName', label: 'Fire name', type: 'text' }, { key: 'acres', label: 'Size (as reported)', type: 'text' }, { key: 'containment', label: 'Containment', type: 'text' }, { key: 'location', label: 'Location', type: 'text' }, { key: 'evac', label: 'Evacuations', type: 'text' }, asOfDef, srcDef] });
+    };
+  }
+  function sourceLine() {       // small bottom-right attribution chip, below the lower-third zone
+    return (brand) => {
+      const c = ctx(brand, 1920, 1080), w = 760, x = 1920 - 96 - w, y = 982;
+      c.rect(x, y, w, 42, { fill: c.navy, opacity: 0.9, name: 'Source plate' }); c.rect(x, y, 6, 42, { fill: c.acc, role: 'accent', name: 'Source rule' });
+      c.text('', x + 20, y + 8, w - 34, { size: 24, weight: 600, fill: c.ink, align: 'right', key: 'source', tpl: 'SOURCE: {v}', name: 'Source', family: brand.fonts.body });
+      c.text('', x + 20, y - 34, w - 34, { size: 22, weight: 700, fill: c.warn, align: 'right', key: 'asOf', fmt: 'datetime', tpl: 'AS OF {v}', name: 'As of', family: brand.fonts.body, bg: 'rgba(12,17,25,0.85)', showIf: 'showTime' });
+      const fields = { source: '[AGENCY / PRODUCT]', asOf: '', showTime: true, org: brand.orgName };
+      return finish(c, { canvas: { w: 1920, h: 1080, bg: { transparent: true, color: '#00000000' } }, fields, fieldDefs: [srcDef, asOfDef, { key: 'showTime', label: 'Show "as of" time', type: 'checkbox' }] });
+    };
+  }
 
   /* ---------- the library ---------- */
   const T = [];
@@ -290,13 +337,21 @@
   // Public safety / general
   def('gn-lowerthird-web', 'Digital news thumbnail', 'general', 1200, 675, 'Landscape digital thumbnail.', socialCard({ w: 1200, h: 675, kicker: 'NEWS', headline: 'HEADLINE GOES HERE', big: 90 }), ['thumbnail']);
   def('gn-quote-wide', 'Quote card (wide)', 'general', 1920, 1080, 'Landscape quote card.', quoteCard({ w: 1920, h: 1080 }), ['quote']);
+  // NWTT broadcast kit (see NS.Broadcast.KIT in broadcast.js for which template goes in which OBS scene)
+  def('nwtt-starting-soon', 'NWTT Starting Soon', 'broadcast', 1920, 1080, 'Full-screen holding card before the stream starts. Export: OBS full-screen.', titleCard({ title: 'STARTING SOON', sub: '[Coverage title]', stripe: true, sample: false, tagline: true, note: 'Live coverage from the National Wildfire Tracking Team' }), ['full screen', 'nwtt', 'obs']);
+  def('nwtt-technical', 'NWTT Technical Difficulties', 'broadcast', 1920, 1080, 'Full-screen standby card for technical problems. Export: OBS full-screen.', titleCard({ title: 'WE\'LL BE RIGHT BACK', sub: 'We are working on a technical issue. Please stand by.', stripe: true, sample: false, tagline: true, size: 130, note: 'For emergency instructions, follow your local officials and official alerts.' }), ['full screen', 'nwtt', 'obs']);
+  def('nwtt-ending', 'NWTT Broadcast Ending', 'broadcast', 1920, 1080, 'End-of-coverage card with an official-sources reminder. Export: OBS full-screen.', titleCard({ title: 'END OF COVERAGE', sub: 'Thank you for watching.', stripe: true, sample: false, tagline: true, size: 130, note: 'Conditions can change quickly. Follow your local officials and official emergency alerts.' }), ['full screen', 'nwtt', 'obs']);
+  def('nwtt-incident-update', 'NWTT Live Incident Update', 'broadcast', 1920, 1080, 'Transparent lower band: incident, one-line official update, "as of" time and source. Export: OBS overlay.', incidentUpdate(), ['transparent', 'nwtt', 'obs', 'incident']);
+  def('nwtt-wildfire-facts', 'NWTT Wildfire Fact Panel', 'safety', 1920, 1080, 'Transparent side panel for wildfire coverage over a map: size, containment, location, evacuations, as-of time, source. Export: OBS overlay.', fireFacts(), ['transparent', 'nwtt', 'obs', 'wildfire']);
+  def('nwtt-source', 'NWTT Source Attribution', 'broadcast', 1920, 1080, 'Transparent source line (and optional "as of" time) for the bottom-right corner. Export: OBS overlay.', sourceLine(), ['transparent', 'nwtt', 'obs', 'attribution']);
+  def('nwtt-evac-list', 'NWTT Evacuation Orders and Warnings', 'safety', 1920, 1080, 'Full-screen list of evacuation zones and their status, with official as-of time and source. Export: OBS full-screen.', listGraphic({ title: 'EVACUATION ORDERS AND WARNINGS', sub: '[County, State] — from official sources', rows: 7, validTpl: 'AS OF {v}', blankTime: true, source: '[ISSUING AGENCY]', sample: false, firstRow: ['[ZONE / AREA NAME]', '[Boundaries as written in the official order]', '[ORDER / WARNING]'] }), ['list', 'nwtt', 'obs', 'evacuation']);
   def('gn-blank-map', 'Blank map graphic', 'general', 1920, 1080, 'A full-frame map with header bar; start here for custom map graphics.', mapGraphic({ title: 'MAP TITLE', subtitle: 'Subtitle', view: 'Lower 48', layers: [], sample: false }), ['map']);
 
   // Map graphic for a user-selected NWS alert filter (see alerts.js). `o` = {title, subtitle, accent, style, extent, projection, filter, color, data}.
   // Other live-selection views (hazards.js) reuse it with {layerId, layerCfg, category, templateId, source}.
   async function alertGraphic(brand, o) {
     await NS.prepareFonts([brand.fonts.display, brand.fonts.body, brand.fonts.mono]);
-    const r = mapGraphic({ title: o.title, subtitle: o.subtitle, view: 'Lower 48', layers: [], style: o.style, accent: o.accent, sample: false, alertType: o.title, source: o.source || 'NOAA / National Weather Service', projection: o.projection })(brand);
+    const r = mapGraphic({ title: o.title, subtitle: o.subtitle, view: 'Lower 48', layers: [], style: o.style, accent: o.accent, sample: false, alertType: o.title, source: o.source || 'NOAA / National Weather Service', projection: o.projection, validTpl: o.asOf ? 'DATA AS OF {v}' : undefined, fields: o.asOf ? { validTime: localIso(o.asOf) } : undefined })(brand);
     const m = r.objects.find(x => x.type === 'MapFrame'), st = m.mapState, id = o.layerId || 'nws-custom'; st.projection = o.projection;
     st.fit = { extent: o.extent, padding: { top: 150, bottom: 60, left: 40, right: 40 } }; st.extent = o.extent;
     st.layers[id] = Object.assign({ on: true, opacity: 0.85 }, o.layerCfg || { filter: o.filter, color: o.color || null }); st.layerOrder.push(id); st.layerData[id] = { fetchedAt: Date.now(), data: o.data };

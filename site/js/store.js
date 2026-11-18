@@ -57,7 +57,9 @@
   const brandColor = (b, name, fb) => { const c = (b.colors || []).find(c => c.name.toLowerCase() === name.toLowerCase()); return c ? c.hex : fb; };
 
   async function getBrand() {
-    try { const b = await Store.get('settings', 'brand'); return Object.assign({}, DEFAULT_BRAND, b || {}); } catch (e) { return Object.assign({}, DEFAULT_BRAND); }
+    // Precedence: Brand Settings saved in this browser > `brand` in config.json (shared NWTT defaults) > built-in defaults.
+    const base = () => { const c = (g.NS && g.NS.config && g.NS.config.brand) || {}; return Object.assign({}, DEFAULT_BRAND, c, { fonts: Object.assign({}, DEFAULT_BRAND.fonts, c.fonts || {}) }); };
+    try { const b = await Store.get('settings', 'brand'); return Object.assign(base(), b || {}); } catch (e) { return base(); }
   }
   const blankProject = (w, h, name, category) => ({
     id: uid('prj'), name: name || 'Untitled graphic', category: category || 'general',

@@ -14,3 +14,11 @@ export async function launch(opts = {}) {
 let pass = 0, fail = 0; export const results = [];
 export function check(name, cond, extra) { if (cond) { pass++; console.log('  ✓', name); } else { fail++; console.log('  ✗', name, extra !== undefined ? JSON.stringify(extra) : ''); } results.push([name, !!cond]); }
 export const summary = () => { console.log(`\n${pass} passed, ${fail} failed`); return fail; };
+/* Click a download button; if the "not ready to air" confirmation appears (sample/placeholder content), accept it. Returns the Download. */
+export async function clickDownload(page, sel, { confirm = true } = {}) {
+  const dl = page.waitForEvent('download', { timeout: 30000 });
+  await page.click(sel);
+  const btn = page.locator('dialog[aria-label="Graphic not ready to air"] button:has-text("Export anyway")');
+  if (await btn.waitFor({ timeout: 1500 }).then(() => true, () => false)) { if (!confirm) { await page.click('dialog[aria-label="Graphic not ready to air"] button:has-text("Cancel")'); dl.catch(() => {}); return null; } await btn.click(); }
+  return dl;
+}
