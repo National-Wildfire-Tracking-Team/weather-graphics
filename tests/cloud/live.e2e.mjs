@@ -49,6 +49,9 @@ check('A: preview dialog proposes an expiry for a time-sensitive graphic', await
 await confirmDlg(A.page, 'Preview'); await A.page.waitForSelector('#livePreview img', { timeout: 30000 });
 check('A: rendered graphic appears in Preview (not public)', await A.page.isVisible('#livePreview img'));
 
+// Phase 3: the session links to its live map in Sentinel Broadcast Mode
+check('A: console links to the Sentinel live map control for this session', (await A.page.getAttribute('#liveMapLink a', 'href')) === 'https://app.nationalwildfiretrackingteam.org/broadcast/control/' + sessionId, await A.page.getAttribute('#liveMapLink a', 'href'));
+
 // OBS output credential
 await A.page.fill('#outLabel', 'Computer B OBS'); await A.page.click('#makeOutput'); await A.page.waitForSelector('#outputUrl');
 const outUrl = await A.page.inputValue('#outputUrl'); await confirmDlg(A.page, 'Done');

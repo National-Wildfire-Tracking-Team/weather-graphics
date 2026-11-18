@@ -14,6 +14,8 @@
   const b64 = blob => new Promise(res => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.readAsDataURL(blob); });
   const hexToUrl = hex => { const s = hex.replace(/^\\x/, ''), u = new Uint8Array(s.length / 2); for (let i = 0; i < u.length; i++) u[i] = parseInt(s.substr(i * 2, 2), 16); return URL.createObjectURL(new Blob([u], { type: 'image/png' })); };
   L.outputUrl = (sessionId, token) => new URL('broadcast/output/' + sessionId, location.href.replace(/#.*$/, '').replace(/[^/]*$/, '')).href + '#t=' + token;
+  // Sentinel Broadcast Mode (Phase 3 live map). Override with "sentinelUrl" in config.json (e.g. a deploy preview).
+  L.sentinelControlUrl = sessionId => String(NS.config.sentinelUrl || 'https://app.nationalwildfiretrackingteam.org').replace(/\/+$/, '') + '/broadcast/control/' + encodeURIComponent(sessionId);
 
   /* Render a project with the existing export engine into the exact 1920×1080 PNG that will air. */
   L.renderForLive = async function (p) {
@@ -137,13 +139,20 @@
     let loadSeq = 0;
     /* Overlapping refreshes can finish out of order: only the newest request may apply, and a session row older than
        the one already shown (lower version) is never applied, so the console cannot slip back to a stale state. */
+    // Phase 3 adds output_tokens.scope ('graphics' | 'map'); fall back to the Phase 2 columns where it is not there yet.
+    const OUT_COLS = 'id,label,created_by,created_at,expires_at,revoked_at,last_seen_at,last_rendered_seq,last_status';
+    async function loadOutputs() {
+      const q = cols => C.client.from('output_tokens').select(cols).eq('session_id', id).order('created_at', { ascending: false });
+      const r = await q(OUT_COLS + ',scope');
+      return r.error && /scope/.test(r.error.message || '') ? q(OUT_COLS) : r;
+    }
     async function load() {
       const my = ++loadSeq;
       const [s, rv, ev, out, au] = await Promise.all([
         C.client.from('broadcast_sessions').select('*').eq('id', id).maybeSingle(),
         C.client.from('broadcast_revisions').select('*').eq('session_id', id).order('id', { ascending: false }).limit(40),
         C.client.from('live_events').select('*').eq('session_id', id).order('seq', { ascending: false }).limit(40),
-        C.client.from('output_tokens').select('id,label,created_by,created_at,expires_at,revoked_at,last_seen_at,last_rendered_seq,last_status').eq('session_id', id).order('created_at', { ascending: false }),
+        loadOutputs(),
         C.client.from('audit_log').select('*').eq('session_id', id).order('at', { ascending: false }).limit(60)]);
       const err = [s, rv, ev, au].find(x => x.error); if (err) throw err.error;
       if (!s.data) throw new Error('Session not found, or you are not assigned to it.');
@@ -211,7 +220,8 @@
     function outputsBox() {
       const box = h('div', { class: 'livecol', id: 'liveOutputs' }, h('h3', {}, 'OBS outputs'));
       const canMake = !ended() && (isCtl() || C.can('admin') || (C.can('producer', 'broadcaster') && [S.producer_id, S.broadcaster_id].includes(C.user.id)));
-      const fresh = state.outputs.filter(o => !o.revoked_at && new Date(o.expires_at) > new Date());
+      const active = state.outputs.filter(o => !o.revoked_at && new Date(o.expires_at) > new Date());
+      const fresh = active.filter(o => o.scope !== 'map'), maps = active.filter(o => o.scope === 'map');
       box.append(fresh.length ? h('table', { class: 't' }, h('tbody', {}, fresh.map(o => {
         const seen = o.last_seen_at ? (Date.now() - Date.parse(o.last_seen_at)) / 1000 : Infinity, behind = o.last_rendered_seq != null && o.last_rendered_seq < S.live_seq;
         const health = seen > 60 ? ['not connected', 'err'] : seen > 20 ? ['connection unstable', 'warn'] : behind ? ['updating…', 'warn'] : o.last_status === 'error' ? ['render error', 'err'] : ['showing current state', 'ok'];
@@ -219,6 +229,9 @@
           h('td', {}, h('button', { class: 'btn sm', onclick: () => act('Output renewed for 12 h.', () => C.client.rpc('bc_output_token_admin', { p_token_id: o.id, p_action: 'extend', p_hours: 12 })) }, 'Renew 12 h'),
             h('button', { class: 'btn sm danger', 'data-revoke': o.id, onclick: () => act('Output revoked.', () => C.client.rpc('bc_output_token_admin', { p_token_id: o.id, p_action: 'revoke' }), { title: 'Revoke OBS output', ok: 'Revoke', danger: true, body: h('p', {}, '"' + o.label + '" stops showing graphics within seconds and its URL stops working for good. Create a new output to replace it.') }) }, 'Revoke'))); }))) : h('p', { class: 'hint' }, 'No active outputs.'));
       box.append(h('p', { class: 'hint' }, 'Health comes from the output itself (what it last rendered), not just from publishing.'));
+      // Live map (Sentinel Broadcast Mode) for the same session: same controller, roles and audit trail.
+      box.append(h('p', { class: 'hint', id: 'liveMapLink' }, 'Live map: ', h('a', { href: L.sentinelControlUrl(id), target: '_blank', rel: 'noopener noreferrer' }, 'open Sentinel map control'),
+        maps.length ? ' · ' + maps.length + ' OBS map output' + (maps.length > 1 ? 's' : '') + ' active (managed in Sentinel)' : ''));
       if (canMake) { const lbl = h('input', { type: 'text', id: 'outLabel', placeholder: 'e.g. Kyle — OBS laptop', 'aria-label': 'Output label' }), hrs = h('select', { id: 'outHours', 'aria-label': 'Valid for' }, [4, 12, 24, 72].map(x => h('option', { value: x, selected: x === 12 }, x + ' h')));
         box.append(h('div', { class: 'row' }, lbl, hrs, h('button', { class: 'btn', id: 'makeOutput', onclick: async () => {
           const r = await C.client.rpc('bc_issue_output_token', { p_session: id, p_label: lbl.value || 'OBS output', p_ttl_hours: +hrs.value }); if (r.error) return toast(C.msg(r.error), 'err');
