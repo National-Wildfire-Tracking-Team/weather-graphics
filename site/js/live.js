@@ -134,7 +134,11 @@
     const conn = h('span', { class: 'tag', id: 'liveConn' }, 'connecting…');
     const state = { session: null, revisions: [], events: [], outputs: [], audit: [] };
     const img = async rid => { if (!rid) return null; if (imgs.has(rid)) return imgs.get(rid); const r = await C.client.from('render_images').select('png').eq('revision_id', rid).single(); const u = r.error ? null : hexToUrl(r.data.png); imgs.set(rid, u); return u; };
+    let loadSeq = 0;
+    /* Overlapping refreshes can finish out of order: only the newest request may apply, and a session row older than
+       the one already shown (lower version) is never applied, so the console cannot slip back to a stale state. */
     async function load() {
+      const my = ++loadSeq;
       const [s, rv, ev, out, au] = await Promise.all([
         C.client.from('broadcast_sessions').select('*').eq('id', id).maybeSingle(),
         C.client.from('broadcast_revisions').select('*').eq('session_id', id).order('id', { ascending: false }).limit(40),
@@ -143,6 +147,7 @@
         C.client.from('audit_log').select('*').eq('session_id', id).order('at', { ascending: false }).limit(60)]);
       const err = [s, rv, ev, au].find(x => x.error); if (err) throw err.error;
       if (!s.data) throw new Error('Session not found, or you are not assigned to it.');
+      if (my !== loadSeq || (state.session && s.data.version < state.session.version)) return false;
       Object.assign(state, { session: s.data, revisions: rv.data, events: ev.data, outputs: out.error ? [] : out.data, audit: au.data }); S = s.data; lastOk = Date.now();
     }
     let pending = null; const refresh = () => { clearTimeout(pending); pending = setTimeout(async () => { try { await load(); await draw(); } catch (e) { setConn(); } }, 250); };

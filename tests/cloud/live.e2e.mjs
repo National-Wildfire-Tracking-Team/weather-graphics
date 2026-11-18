@@ -184,6 +184,18 @@ await Cc.page.goto(SITE + 'index.html#/live/' + sessionId); await Cc.page.waitFo
 await Cc.page.click('[data-status="ended"]'); await confirmDlg(Cc.page, 'End session');
 check('ending the session stops its outputs immediately', await waitOut(B2, () => /ended|revoked/.test(window.__nwttOutput.status) && !document.querySelector('#stage img'), null, 15000), await out(B2));
 
+// ---------------- resilience: cloud unreachable / not configured / secret key
+const D = await b.newContext({ viewport: { width: 1400, height: 900 } });
+await D.route('**/config.json', async r => { const res = await r.fetch(); const j = await res.json(); j.supabase = { url: 'http://127.0.0.1:9', anonKey: ANON }; r.fulfill({ response: res, json: j }); });
+const dp = await D.newPage(); await dp.goto(SITE + 'index.html#/dashboard'); await dp.waitForSelector('#nav a'); await dp.waitForTimeout(2500);
+check('cloud unreachable: Studio still loads and local editing works', await dp.evaluate(async () => { await NS.App.newBlank(1920, 1080); await new Promise(r => setTimeout(r, 1500)); return !!document.querySelector('#workspace canvas'); }));
+await dp.goto(SITE + 'index.html#/live'); await dp.waitForTimeout(1500);
+check('cloud unreachable: Live Broadcast Control says so and offers the PNG fallback', /unreachable|Sign in/.test(await dp.innerText('main')) && await dp.isVisible('text=Download fallback holding cards'), await dp.innerText('main'));
+const E = await b.newContext(); const ep = await E.newPage(); await ep.goto(SITE + 'index.html#/live'); await ep.waitForSelector('#nav a', { state: 'attached' }); await ep.waitForTimeout(1000);
+check('no cloud configured: Live Broadcast Control explains it and keeps the Phase 1 PNG workflow', /needs the shared cloud/.test(await ep.innerText('main')) && !(await ep.isVisible('#cloudChip')));
+check('a service-role key in config.json is refused by the browser', await ep.evaluate(sk => NS.Cloud.safeConfig({ url: 'https://x.supabase.co', anonKey: sk }) === 'secret' && NS.Cloud.safeConfig({ url: 'https://x.supabase.co', anonKey: 'sb_secret_abc' }) === 'secret', (await import('./env.mjs')).SERVICE));
+await D.close(); await E.close();
+
 console.log(errs.length ? 'page errors:\n' + errs.join('\n') : 'no page errors');
 check('no page errors on any computer', errs.length === 0, errs);
 const f = summary(); await b.close(); process.exit(f ? 1 : 0);
