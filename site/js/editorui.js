@@ -22,6 +22,7 @@
       const leftPanel = $('div', { id: 'leftPanel' }), rightPanel = $('div', { id: 'rightPanel' }), ws = $('div', { id: 'workspace' });
       const hud = $('div', { id: 'wsHud' }, 'Space+drag or middle-drag to pan · Ctrl+wheel to zoom');
       const hotbar = $('div', { id: 'hotbar', role: 'toolbar', 'aria-label': 'Editing tools' });
+      const cloudEl = $('span', { class: 'status', id: 'cloudSync', hidden: true, role: 'status' });
       const top = $('div', { id: 'topbar' },
         $('button', { class: 'btn', title: 'Back to dashboard', 'aria-label': 'Back to dashboard', id: 'backBtn', onclick: () => V.leave() }, '←'), nameInp,
         undoB, redoB, $('span', { class: 'sep' }),
@@ -30,10 +31,11 @@
         btn('Canvas…', 'Canvas size and background', () => canvasDialog(), 'canvasBtn'),
         $('button', { class: 'btn sm', id: 'safeBtn', title: 'Toggle title-safe / action-safe guides', onclick: e => { ed.showSafe = !ed.showSafe; e.currentTarget.classList.toggle('on', ed.showSafe); ed.canvas.requestRenderAll(); } }, 'Safe areas'),
         $('button', { class: 'btn sm on', id: 'snapBtn', title: 'Toggle snapping', onclick: e => { ed.snap = !ed.snap; e.currentTarget.classList.toggle('on', ed.snap); } }, 'Snap'),
-        $('span', { class: 'sp' }), statusEl,
+        $('span', { class: 'sp' }), statusEl, cloudEl,
         btn('Versions', 'Saved versions', () => versionsDialog(), 'versionsBtn'), btn('Save template', 'Save as reusable template', () => saveTemplate(), 'saveTplBtn'),
         $('button', { class: 'btn', id: 'saveBtn', onclick: () => V.save(true) }, 'Save'),
         $('button', { class: 'btn', id: 'previewBtn', onclick: () => exportDialog(true) }, 'Preview'),
+        NS.Cloud.signedIn() ? $('button', { class: 'btn', id: 'sendLiveBtn', title: 'Send to a Live Broadcast Control session preview', onclick: async () => { await V.save(true); NS.Live.sendFromEditor(ed.p); } }, 'Send to Live') : null,
         $('button', { class: 'btn primary', id: 'exportBtn', onclick: () => exportDialog(false) }, 'Export'));
       const body = $('div', { id: 'editorBody' }, leftPanel, $('div', { style: 'flex:1;min-width:0;display:flex;flex-direction:column' }, hotbar, ws), rightPanel);
       ws.append(hud); main.append(top, body);
@@ -64,12 +66,16 @@
           setStatus('saving'); ed.syncProject(); const p = ed.p; p.name = nameInp.value.trim() || 'Untitled graphic';
           if (manual) { p.versions = p.versions || []; p.versions.unshift({ id: NS.uid('v'), at: Date.now(), label: 'Saved', objects: p.objects, canvas: p.canvas, fields: p.fields, settings: p.settings }); p.versions = p.versions.slice(0, 15); }
           p.thumb = await NS.Export.thumbnail(p, 360);
-          await NS.Store.put('projects', JSON.parse(JSON.stringify(p))); V.lastSaved = Date.now(); setStatus('saved'); if (manual) toast('Saved locally in this browser.', 'ok'); return true;
+          await NS.Store.put('projects', JSON.parse(JSON.stringify(p))); V.lastSaved = Date.now(); setStatus('saved'); if (manual && !p.cloud) toast('Saved locally in this browser.', 'ok');
+          if (p.cloud) NS.CloudProjects.afterLocalSave(p, manual);   // linked to a shared project: push (or keep as offline draft)
+          return true;
         } catch (e) { setStatus('error', 'Save failed: ' + e.message); toast('Could not save: ' + e.message, 'err'); return false; }
       };
       V.leave = () => { location.hash = '#/dashboard'; };
       V.closeGuard = async () => { if (status === 'dirty' || status === 'saving' || status === 'error') { const ok = await V.save(false); if (!ok) return NS.ui.confirm('Leave without saving?', 'The project could not be saved. Leave anyway and lose recent changes?', 'Leave', true); } return true; };
-      V.destroy = () => { V.destroyed = true; clearTimeout(V.saveTimer); ed.destroy(); };
+      V.destroy = () => { V.destroyed = true; clearTimeout(V.saveTimer); offCloud(); ed.destroy(); };
+      const offCloud = NS.CloudProjects.onStatus((p, s, text) => { if (p.id !== ed.p.id) return; cloudEl.hidden = false; cloudEl.className = 'status ' + (s === 'synced' ? 'ok' : s === 'conflict' || s === 'error' ? 'err' : 'dirty'); cloudEl.textContent = text; cloudEl.onclick = s === 'conflict' ? () => NS.CloudProjects.resolveConflict(ed.p) : null; cloudEl.style.cursor = s === 'conflict' ? 'pointer' : ''; });
+      if (ed.p.cloud) { cloudEl.hidden = false; if (ed.p.cloud.conflict) { cloudEl.className = 'status err'; cloudEl.textContent = 'Cloud: conflict — click to resolve'; cloudEl.style.cursor = 'pointer'; cloudEl.onclick = () => NS.CloudProjects.resolveConflict(ed.p); } else if (ed.p.cloud.dirty) { cloudEl.className = 'status dirty'; cloudEl.textContent = 'Cloud: unsynced changes (will sync)'; NS.CloudProjects.push(ed.p, false); } else { cloudEl.className = 'status ok'; cloudEl.textContent = 'Cloud: v' + ed.p.cloud.version + (ed.p.cloud.approval === 'approved' ? ' · approved' : ''); } }
       nameInp.addEventListener('change', () => { ed.p.name = nameInp.value; V.dirty(); });
       window.addEventListener('beforeunload', V.beforeUnload = e => { if (!V.destroyed && (status === 'dirty' || status === 'error')) { e.preventDefault(); e.returnValue = ''; } });
       const origDestroy = V.destroy; V.destroy = () => { window.removeEventListener('beforeunload', V.beforeUnload); origDestroy(); };

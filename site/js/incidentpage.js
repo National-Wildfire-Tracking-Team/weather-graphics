@@ -159,6 +159,8 @@
         h('div', { class: 'bar' },
           h('button', { class: 'btn', id: 'ipCopy', onclick: () => I.copy(summaryText(c)) }, 'Copy summary'),
           h('button', { class: 'btn primary', id: 'ipGraphic', disabled: !st.per, title: st.per ? 'Create an editable map graphic of the NIFC perimeter' : 'Needs a mapped NIFC perimeter', onclick: () => makeGraphic(c) }, 'Make map graphic'),
+          h('button', { class: 'btn', id: 'ipLiveGraphic', title: 'Wildfire fact panel filled from agency records only (no social posts), with source and "as of" time, for review before broadcast', onclick: () => NS.Live.incidentGraphic(c) }, 'Live fact panel'),
+          NS.Cloud.signedIn() && NS.Cloud.can('admin', 'producer') ? h('button', { class: 'btn', id: 'ipLiveSession', title: 'Start a Live Broadcast Control session linked to this incident', onclick: () => NS.Live.incidentSession(c) }, 'Start broadcast session') : null,
           iw.map(x => h('a', { class: 'btn sm', href: x.url, target: '_blank', rel: 'noopener' }, 'InciWeb ↗')),
           fires.filter(f => f.url).map(f => h('a', { class: 'btn sm', href: f.url, target: '_blank', rel: 'noopener' }, srcName(f.src) + ' ↗')),
           h('a', { class: 'btn sm', id: 'ipFbSearch', href: 'https://www.facebook.com/search/posts?q=' + encodeURIComponent(c.name + (c.county ? ' ' + c.county : '')), target: '_blank', rel: 'noopener', title: 'Search public Facebook posts (opens Facebook; results are unverified)' }, 'Search Facebook ↗'),

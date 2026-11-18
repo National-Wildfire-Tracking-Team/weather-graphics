@@ -506,6 +506,9 @@ begin
           and exists (select 1 from public.session_members m where m.session_id = p_session and m.user_id = auth.uid() and m.session_role in ('editor', 'producer')))) then
     raise exception 'You are not allowed to send graphics to this session''s preview.' using errcode = '42501';
   end if;
+  if p_project is null and not public.gs_has_role('admin', 'producer') then
+    raise exception 'Graphics editors can only preview approved shared projects.' using errcode = '42501';
+  end if;
   if p_project is not null then
     select * into p from public.projects where id = p_project;
     if not found then raise exception 'Project not found.'; end if;

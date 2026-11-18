@@ -76,6 +76,13 @@ r = await U.producer.c.from('broadcast_sessions').update({ title: 'direct' }).eq
 r = await rpc('producer', 'bc_create_preview', { p_session: S.id, p_name: 'bad', p_png_base64: Buffer.from('not a png').toString('base64'), p_overlay: true }); check('preview rejects non-PNG data', /PNG/.test(errOf(r) || ''), errOf(r));
 r = await rpc('producer', 'bc_create_preview', { p_session: S.id, p_name: 'small', p_png_base64: png(1280, 720), p_overlay: true }); check('preview rejects sizes other than 1920×1080', /1920×1080/.test(errOf(r) || ''), errOf(r));
 r = await rpc('editor2', 'bc_create_preview', { p_session: S.id, p_name: 'x', p_png_base64: OVER, p_overlay: true }); check('editor outside the session cannot send to preview', !!r.error);
+await rpc('producer', 'bc_add_member', { p_session: S.id, p_user: U.editor.id, p_role: 'editor', p_expected_version: S.version });
+r = await rpc('editor', 'bc_create_preview', { p_session: S.id, p_name: 'unapproved', p_png_base64: OVER, p_overlay: true }); check('session editor cannot preview an arbitrary (non-project) graphic', /approved shared projects/.test(errOf(r) || ''), errOf(r));
+r = await rpc('editor', 'bc_create_preview', { p_session: S.id, p_name: 'draft', p_png_base64: OVER, p_overlay: true, p_project: P.id }); check('session editor cannot preview an unapproved project', /approved/.test(errOf(r) || ''), errOf(r));
+await rpc('producer', 'gs_set_approval', { p_project: P.id, p_approval: 'approved' });
+r = await rpc('editor', 'bc_create_preview', { p_session: S.id, p_name: 'approved', p_png_base64: OVER, p_overlay: true, p_project: P.id }); check('session editor can preview an approved project', !r.error, errOf(r));
+r = await rpc('editor', 'bc_publish', { p_session: S.id, p_revision: r.data && r.data.id, p_mode: 'take', p_expected_version: 0 }); check('graphics editor can never publish', !!r.error);
+S = (await U.producer.c.from('broadcast_sessions').select('*').eq('id', S.id).single()).data;
 r = await rpc('producer', 'bc_create_preview', { p_session: S.id, p_name: 'Wildfire fact panel', p_png_base64: OVER, p_overlay: true, p_category: 'safety', p_source: 'NIFC', p_source_time: new Date().toISOString(), p_expires_at: new Date(Date.now() + 3600e3).toISOString(), p_stale_after_s: 300 });
 check('producer previews a rendered graphic', !r.error && r.data.overlay === true, errOf(r));
 const R1 = r.data;

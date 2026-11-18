@@ -2,3 +2,5 @@
 /studio/*  /:splat  301
 # Incident Detection: CAL FIRE's API sends no CORS headers, so proxy it same-origin (status 200 = rewrite).
 /proxy/calfire/*  https://incidents.fire.ca.gov/:splat  200
+# Phase 2: OBS Browser Source output. The token is in the URL fragment (#t=…), which never reaches the server.
+/broadcast/output/*  /broadcast/output.html  200
