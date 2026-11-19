@@ -5,6 +5,8 @@ import { chromium } from '/opt/node22/lib/node_modules/playwright/index.mjs';
 import { existsSync } from 'node:fs';
 import { users, URL_, ANON, PASSWORD, png, check, summary } from './env.mjs';
 const SITE = process.env.SITE || 'http://localhost:8765/';
+// Sentinel (the embedded live map panel). Default: an unreachable local address, so this suite needs no Sentinel.
+const SENTINEL = process.env.SENTINEL_URL || 'http://127.0.0.1:9';
 const CHROME = process.env.CHROME || ['/opt/pw-browsers/chromium-1194/chrome-linux/chrome', '/opt/pw-browsers/chromium'].find(p => existsSync(p));
 const tag = 'e' + Date.now().toString(36); const U = await users(tag);
 console.log('Phase 2 live graphics end-to-end — users tagged', tag);
@@ -12,7 +14,7 @@ const b = await chromium.launch({ executablePath: CHROME, args: ['--no-sandbox',
 const errs = [];
 async function computer(name, opts = {}) {
   const ctx = await b.newContext(Object.assign({ viewport: { width: 1600, height: 950 }, acceptDownloads: true }, opts));
-  await ctx.route('**/config.json', async r => { const res = await r.fetch(); const j = await res.json(); j.supabase = { url: URL_, anonKey: ANON }; r.fulfill({ response: res, json: j }); });
+  await ctx.route('**/config.json', async r => { const res = await r.fetch(); const j = await res.json(); j.supabase = { url: URL_, anonKey: ANON }; j.sentinelUrl = SENTINEL; r.fulfill({ response: res, json: j }); });
   const page = await ctx.newPage(); page.on('pageerror', e => errs.push(name + ': ' + e.message));
   return { ctx, page, ev: (fn, a) => page.evaluate(fn, a) };
 }
@@ -50,7 +52,7 @@ await confirmDlg(A.page, 'Preview'); await A.page.waitForSelector('#livePreview 
 check('A: rendered graphic appears in Preview (not public)', await A.page.isVisible('#livePreview img'));
 
 // Phase 3: the session links to its live map in Sentinel Broadcast Mode
-check('A: console links to the Sentinel live map control for this session', (await A.page.getAttribute('#liveMapLink a', 'href')) === 'https://app.nationalwildfiretrackingteam.org/broadcast/control/' + sessionId, await A.page.getAttribute('#liveMapLink a', 'href'));
+check('A: the one control center embeds the Sentinel live map panel for this session', (await A.page.getAttribute('#liveMap iframe', 'src')) === SENTINEL + '/broadcast/control/' + sessionId + '?embed=1', await A.page.getAttribute('#liveMap iframe', 'src'));
 
 // OBS output credential
 await A.page.fill('#outLabel', 'Computer B OBS'); await A.page.click('#makeOutput'); await A.page.waitForSelector('#outputUrl');

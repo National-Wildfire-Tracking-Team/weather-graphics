@@ -204,6 +204,8 @@ a.btn{color:var(--ink);text-decoration:none;display:inline-block}
 .livecol{background:var(--surface-panel);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;min-width:0}
 .livecol h3{margin:0 0 8px}
 .livecol.onair{border-color:var(--accent)}
+.reportergrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px}
+.reportertile{background:var(--surface-raised,#141a23);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px;min-width:0}
 .livepic{aspect-ratio:16/9;border:1px solid var(--border);margin:6px 0;display:flex;align-items:center;justify-content:center;overflow:hidden}
 .livepic img{width:100%;height:100%;object-fit:contain;display:block}
 .livepic.small{width:260px}
