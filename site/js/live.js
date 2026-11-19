@@ -22,6 +22,88 @@
      signs in with this page's session, passed by postMessage to Sentinel's exact origin only; it never refreshes the
      session itself, so this page sends the new tokens after every refresh. Built once per console and kept outside
      the parts that redraw, because moving an iframe in the page reloads it. */
+  /* Field reporters panel: live previews of NWTT field reporters from the SRT relay (Larix → relay → here), for the
+     producer to see who is live and pick the next shot. Not on air: OBS takes reporters from the relay over SRT.
+     Each tile plays its reporter over WebRTC (WHEP) from the relay's HTTPS address, with the members-only preview
+     login from gs_relay_preview(). An offline reporter is retried every few seconds; the list refreshes every minute.
+     Built once per console and kept outside the parts that redraw, so videos don't restart. */
+  L.reportersPanel = function () {
+    const note = h('p', { class: 'hint', id: 'reportersNote' }, 'Loading field reporters…');
+    const grid = h('div', { class: 'reportergrid', id: 'reporterGrid' });
+    const box = h('section', { class: 'livecol', id: 'liveReporters', style: 'margin-bottom:12px' },
+      h('h3', {}, 'Field reporters ', h('span', { class: 'tag' }, 'preview · not on air')), note, grid);
+    const tiles = new Map(); let cfg = null, stopped = false, listTimer = null;
+    const iceDone = pc => new Promise(res => { if (pc.iceGatheringState === 'complete') return res(); const t = setTimeout(res, 2500);
+      pc.addEventListener('icegatheringstatechange', () => { if (pc.iceGatheringState === 'complete') { clearTimeout(t); res(); } }); });
+    function makeTile(rep) {
+      const video = h('video', { muted: true, autoplay: true, playsInline: true, style: 'width:100%;aspect-ratio:16/9;background:#05080c;border-radius:4px;display:block' });
+      video.muted = true;
+      const status = h('span', { class: 'tag', 'data-reporter-status': rep.name }, 'offline'), stats = h('span', { class: 'hint' }, '');
+      const sound = h('button', { class: 'btn sm', title: 'Listen to this reporter (in this browser only)', onclick: () => { video.muted = !video.muted; sound.textContent = video.muted ? 'Unmute' : 'Mute'; } }, 'Unmute');
+      const el = h('div', { class: 'reportertile', 'data-reporter': rep.name }, video,
+        h('div', { class: 'row', style: 'justify-content:space-between;margin-top:6px' }, h('b', {}, rep.label || rep.name), status),
+        h('div', { class: 'row', style: 'justify-content:space-between' }, stats, sound));
+      const t = { rep, el, video, status, stats, pc: null, timer: null, statTimer: null, lastBytes: 0, lastAt: 0 };
+      const set = (txt, cls) => { status.textContent = txt; status.className = 'tag ' + (cls || ''); status.dataset.state = txt; };
+      const close = () => { clearInterval(t.statTimer); t.statTimer = null; if (t.pc) { try { t.pc.close(); } catch (e) {} } t.pc = null; video.srcObject = null; stats.textContent = ''; };
+      const retry = ms => { clearTimeout(t.timer); if (!stopped) t.timer = setTimeout(connect, ms); };
+      async function connect() {
+        if (stopped || !cfg) return;
+        close(); set('connecting…', 'warn');
+        const pc = new RTCPeerConnection(); t.pc = pc;
+        pc.addTransceiver('video', { direction: 'recvonly' }); pc.addTransceiver('audio', { direction: 'recvonly' });
+        pc.ontrack = e => { if (!video.srcObject) video.srcObject = e.streams[0] || new MediaStream(); if (!e.streams[0]) video.srcObject.addTrack(e.track); };
+        pc.onconnectionstatechange = () => {
+          if (t.pc !== pc) return;
+          if (pc.connectionState === 'connected') { set('LIVE', 'ok'); watchStats(pc); }
+          if (['failed', 'closed'].includes(pc.connectionState)) { set('signal lost', 'err'); retry(3000); }
+          if (pc.connectionState === 'disconnected') { set('unstable', 'warn'); setTimeout(() => { if (t.pc === pc && pc.connectionState === 'disconnected') { set('signal lost', 'err'); retry(1000); } }, 5000); }
+        };
+        try {
+          await pc.setLocalDescription(await pc.createOffer()); await iceDone(pc);
+          const res = await fetch(cfg.whep_base + '/' + encodeURIComponent(rep.name) + '/whep', { method: 'POST',
+            headers: { 'Content-Type': 'application/sdp', Authorization: 'Basic ' + btoa(cfg.user + ':' + cfg.pass) }, body: pc.localDescription.sdp });
+          if (t.pc !== pc) return;
+          if (res.status === 404 || res.status === 400) { close(); set('offline'); return retry(6000); }   // not streaming right now
+          if (res.status === 401 || res.status === 403) { close(); set('login refused', 'err'); return retry(60000); }
+          if (!res.ok) { close(); set('relay error ' + res.status, 'err'); return retry(10000); }
+          await pc.setRemoteDescription({ type: 'answer', sdp: await res.text() });
+        } catch (e) { if (t.pc === pc) { close(); set('relay unreachable', 'err'); retry(10000); } }
+      }
+      function watchStats(pc) {
+        clearInterval(t.statTimer);
+        t.statTimer = setInterval(async () => {
+          if (t.pc !== pc) return clearInterval(t.statTimer);
+          const rep2 = await pc.getStats(); let v = null; rep2.forEach(x => { if (x.type === 'inbound-rtp' && x.kind === 'video') v = x; });
+          if (!v) return; const now = performance.now(), kbps = t.lastAt ? Math.round(((v.bytesReceived - t.lastBytes) * 8) / (now - t.lastAt)) : 0;
+          t.lastBytes = v.bytesReceived; t.lastAt = now;
+          stats.textContent = (v.frameWidth ? v.frameWidth + '×' + v.frameHeight + ' · ' : '') + (v.framesPerSecond ? Math.round(v.framesPerSecond) + ' fps · ' : '') + kbps + ' kbps';
+          if (t.status.dataset.state === 'LIVE' && kbps < 300 && t.lastAt) set('LIVE · weak signal', 'warn'); else if (t.status.dataset.state === 'LIVE · weak signal' && kbps >= 300) set('LIVE', 'ok');
+        }, 2000);
+      }
+      t.connect = connect; t.close = () => { clearTimeout(t.timer); close(); };
+      return t;
+    }
+    async function loadList() {
+      if (stopped) return;
+      const r = await C.client.rpc('gs_relay_preview');
+      if (stopped) return;
+      if (r.error) { note.textContent = /gs_relay_preview|schema cache|function/i.test(r.error.message || '') ? 'Field reporter previews are not set up yet.' : C.msg(r.error); return; }
+      if (!r.data) { note.textContent = 'Field reporter relay not configured yet (an administrator sets it after deploying the relay).'; return; }
+      const changed = !cfg || cfg.whep_base !== r.data.whep_base || cfg.user !== r.data.user || cfg.pass !== r.data.pass; cfg = r.data;
+      note.textContent = cfg.reporters.length ? 'Live previews from the field (about a second behind). Unmute to listen. OBS takes reporters from the relay, not from here.' : 'No field reporters added yet.';
+      const names = new Set(cfg.reporters.map(x => x.name));
+      for (const [n, t] of tiles) if (!names.has(n)) { t.close(); t.el.remove(); tiles.delete(n); }
+      for (const rep of cfg.reporters) {
+        let t = tiles.get(rep.name);
+        if (!t) { t = makeTile(rep); tiles.set(rep.name, t); grid.append(t.el); t.connect(); }
+        else if (changed) t.connect();
+      }
+    }
+    loadList(); listTimer = setInterval(loadList, 60000);
+    return { box, dispose: () => { stopped = true; clearInterval(listTimer); tiles.forEach(t => t.close()); } };
+  };
+
   L.mapPanel = function (sessionId) {
     const origin = new URL(L.sentinelBase()).origin;
     const frame = h('iframe', { id: 'liveMapFrame', title: 'Live map control (Sentinel)', src: L.sentinelControlUrl(sessionId) + '?embed=1', allow: 'clipboard-write; fullscreen',
@@ -293,13 +375,14 @@
     try { if (!CP().members.size) await CP().loadMembers(); await load(); await draw(); }
     catch (e) { root.replaceChildren(h('a', { class: 'btn sm', href: '#/live' }, '← Sessions'), h('div', { class: 'empty' }, C.msg(e))); return h('div', { class: 'live', id: 'liveSession' }, root); }
     const map = NS.config.sentinelUrl === 'off' ? null : L.mapPanel(id);
-    const page = h('div', { class: 'live', id: 'liveSession' }, root, map ? map.box : null, lower);
+    const field = typeof RTCPeerConnection === 'function' ? L.reportersPanel() : null;
+    const page = h('div', { class: 'live', id: 'liveSession' }, root, map ? map.box : null, field ? field.box : null, lower);
     /* Lifecycle. The router can build a view and then discard it (a newer navigation won), so a console only starts
        Realtime and polling once its own root is actually on the page, never touches another console instance, and
        cleans itself up when it leaves the page (or if it is never attached). Realtime is RLS-filtered; polling is the
        fallback, and the full state is reloaded on every (re)subscribe so nothing is missed. */
     let poll = null, waited = 0;
-    const dispose = () => { if (disposed) return; disposed = true; clearInterval(poll); clearTimeout(pending); if (chan) C.client.removeChannel(chan); imgs.forEach(u => u && URL.revokeObjectURL(u)); map && map.dispose(); };
+    const dispose = () => { if (disposed) return; disposed = true; clearInterval(poll); clearTimeout(pending); if (chan) C.client.removeChannel(chan); imgs.forEach(u => u && URL.revokeObjectURL(u)); map && map.dispose(); field && field.dispose(); };
     const start = () => {
       chan = C.client.channel('console-' + id + '-' + Math.random().toString(36).slice(2, 8))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'broadcast_sessions', filter: 'id=eq.' + id }, refresh)
